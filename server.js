@@ -45,10 +45,10 @@ async function ensureAdmin() {
       );
     `);
 
-    // Schema upgrade (safe on existing tables)
+    // Ensure password_hash column exists (schema-safe)
     await client.query(`
       ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT '';
+      ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '';
     `);
 
     const existing = await client.query(
@@ -58,7 +58,7 @@ async function ensureAdmin() {
 
     if (existing.rowCount === 0) {
       await client.query(
-        "INSERT INTO users (email, password, role) VALUES ($1, $2, 'admin')",
+        "INSERT INTO users (email, password_hash, role) VALUES ($1, $2, 'admin')",
         [ADMIN_EMAIL, ADMIN_PASSWORD]
       );
       console.log("✅ Admin user created:", ADMIN_EMAIL);
@@ -72,7 +72,7 @@ async function ensureAdmin() {
   }
 }
 
-// IMPORTANT: never let bootstrap crash the app
+// Never allow bootstrap failure to crash the app
 ensureAdmin().catch(() => {});
 
 /* ------------------ AUTH HELPERS ------------------ */
@@ -110,7 +110,10 @@ app.post("/login", async (req, res) => {
     [email]
   );
 
-  if (result.rowCount === 0 || result.rows[0].password !== password) {
+  if (
+    result.rowCount === 0 ||
+    result.rows[0].password_hash !== password
+  ) {
     return res.send("Invalid email or password");
   }
 
@@ -133,3 +136,4 @@ app.get("/logout", (req, res) => {
 app.listen(PORT, () => {
   console.log("AEI Portal running on port", PORT);
 });
+
