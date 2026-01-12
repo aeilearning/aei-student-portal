@@ -1,5 +1,6 @@
 const express = require("express");
 const session = require("express-session");
+const bcrypt = require("bcrypt");
 const { Pool } = require("pg");
 
 const app = express();
@@ -17,7 +18,7 @@ app.use(express.json());
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "dev-secret",
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false
   })
@@ -32,12 +33,6 @@ const STATUSES = [
   "Completed Level",
   "Dropped"
 ];
-
-/* ---------- TEMP ADMIN AUTH ---------- */
-app.use((req, res, next) => {
-  req.session.user = { role: "admin", email: "admin@aei.local" };
-  next();
-});
 
 /* ---------- DB INIT ---------- */
 async function initDb() {
@@ -59,15 +54,97 @@ async function initDb() {
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS admins (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
 }
 initDb();
 
+/* ---------- AUTH HELPERS ---------- */
+function requireAdmin(req, res, next) {
+  if (!req.session.user || req.session.user.role !== "admin") {
+    return res.redirect("/login");
+  }
+  next();
+}
+
 /* ---------- ROUTES ---------- */
 app.get("/", (req, res) => {
-  res.send("AEI Student Portal running");
+  res.send(`
+    <h1>AEI Student Portal</h1>
+    <p><a href="/login">Admin Login</a></p>
+  `);
 });
 
-app.get("/admin", async (req, res) => {
+/* ---------- LOGIN ---------- */
+app.get("/login", (req, res) => {
+  res.send(`
+    <h1>Admin Login</h1>
+    <form method="POST">
+      <input name="email" placeholder="Email" required />
+      <input name="password" type="password" placeholder="Password" required />
+      <button>Login</button>
+    </form>
+  `);
+});
+
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  const result = await pool.query(
+    "SELECT * FROM admins WHERE email=$1",
+    [email]
+  );
+
+  if (!result.rows.length) {
+    return res.send("Invalid login");
+  }
+
+  const admin = result.rows[0];
+  const ok = await bcrypt.compare(password, admin.password_hash);
+
+  if (!ok) {
+    return res.send("Invalid login");
+  }
+
+  req.session.user = { id: admin.id, role: "admin" };
+  res.redirect("/admin");
+});
+
+app.get("/logout", (req, res) => {
+  req.session.destroy(() => res.redirect("/login"));
+});
+
+/* ---------- ONE-TIME ADMIN BOOTSTRAP ---------- */
+/* VISIT /setup-admin ONCE, THEN DELETE THIS ROUTE */
+app.get("/setup-admin", async (req, res) => {
+  const email = "admin@aei.local";
+  const password = "ChangeMeNow123!";
+  const hash = await bcrypt.hash(password, 10);
+
+  await pool.query(
+    `INSERT INTO admins (email, password_hash)
+     VALUES ($1, $2)
+     ON CONFLICT (email) DO NOTHING`,
+    [email, hash]
+  );
+
+  res.send(`
+    Admin created.<br/>
+    Email: ${email}<br/>
+    Password: ${password}<br/>
+    DELETE THIS ROUTE NOW.
+  `);
+});
+
+/* ---------- ADMIN DASHBOARD ---------- */
+app.get("/admin", requireAdmin, async (req, res) => {
   const { rows } = await pool.query(
     "SELECT * FROM students ORDER BY id ASC"
   );
@@ -92,13 +169,7 @@ app.get("/admin", async (req, res) => {
             ).join("")}
           </select>
       </td>
-      <td>${s.enrollment_date || ""}</td>
-      <td>${s.state_license || ""}</td>
-      <td>${s.rapids || ""}</td>
-      <td>${s.employer || ""}</td>
-      <td>${s.phone || ""}</td>
       <td>${s.email || ""}</td>
-      <td>${s.address || ""}</td>
       <td>
           <button>Save</button>
         </form>
@@ -113,6 +184,7 @@ app.get("/admin", async (req, res) => {
 
   res.send(`
     <h1>Admin Dashboard</h1>
+    <p><a href="/logout">Logout</a></p>
 
     <h2>Add Student</h2>
     <form method="POST" action="/admin/add">
@@ -129,13 +201,7 @@ app.get("/admin", async (req, res) => {
         <th>First</th>
         <th>Last</th>
         <th>Level</th>
-        <th>Enrolled</th>
-        <th>State License #</th>
-        <th>RAPIDS #</th>
-        <th>Employer</th>
-        <th>Phone</th>
         <th>Email</th>
-        <th>Address</th>
         <th>Save</th>
         <th>Delete</th>
       </tr>
@@ -144,7 +210,7 @@ app.get("/admin", async (req, res) => {
   `);
 });
 
-app.post("/admin/add", async (req, res) => {
+app.post("/admin/add", requireAdmin, async (req, res) => {
   const nextId = await pool.query(
     "SELECT COALESCE(MAX(student_id::int), 999) + 1 AS next FROM students"
   );
@@ -161,7 +227,7 @@ app.post("/admin/add", async (req, res) => {
   res.redirect("/admin");
 });
 
-app.post("/admin/update/:id", async (req, res) => {
+app.post("/admin/update/:id", requireAdmin, async (req, res) => {
   await pool.query(
     `UPDATE students SET status=$1, level=$2 WHERE id=$3`,
     [req.body.status, req.body.level, req.params.id]
@@ -169,7 +235,7 @@ app.post("/admin/update/:id", async (req, res) => {
   res.redirect("/admin");
 });
 
-app.post("/admin/delete/:id", async (req, res) => {
+app.post("/admin/delete/:id", requireAdmin, async (req, res) => {
   await pool.query("DELETE FROM students WHERE id=$1", [req.params.id]);
   res.redirect("/admin");
 });
