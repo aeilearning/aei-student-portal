@@ -29,19 +29,30 @@ const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
 
 /* ------------------ BOOTSTRAP ------------------ */
 async function ensureAdmin() {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.warn("⚠️ ADMIN_EMAIL or ADMIN_PASSWORD not set. Skipping admin bootstrap.");
+    return;
+  }
+
   const client = await pool.connect();
   try {
+    // Base table (safe on first boot)
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
         role TEXT NOT NULL
       );
     `);
 
+    // Schema upgrade (safe on existing tables)
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT '';
+    `);
+
     const existing = await client.query(
-      "SELECT * FROM users WHERE email = $1",
+      "SELECT id FROM users WHERE email = $1",
       [ADMIN_EMAIL]
     );
 
@@ -54,12 +65,15 @@ async function ensureAdmin() {
     } else {
       console.log("ℹ️ Admin already exists:", ADMIN_EMAIL);
     }
+  } catch (err) {
+    console.error("❌ Admin bootstrap failed:", err.message);
   } finally {
     client.release();
   }
 }
 
-ensureAdmin();
+// IMPORTANT: never let bootstrap crash the app
+ensureAdmin().catch(() => {});
 
 /* ------------------ AUTH HELPERS ------------------ */
 function requireLogin(req, res, next) {
@@ -96,15 +110,11 @@ app.post("/login", async (req, res) => {
     [email]
   );
 
-  if (result.rowCount === 0) {
+  if (result.rowCount === 0 || result.rows[0].password !== password) {
     return res.send("Invalid email or password");
   }
 
   const user = result.rows[0];
-
-  if (user.password !== password) {
-    return res.send("Invalid email or password");
-  }
 
   req.session.user = {
     id: user.id,
