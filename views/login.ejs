@@ -10,8 +10,8 @@
     <h1>AEI Learning Portal</h1>
     <p class="muted">Sign in with your email + password.</p>
 
-    <% if (error) { %>
-      <div class="alert"><%= error %></div>
+    <% if (message) { %>
+      <div class="alert"><%= message %></div>
     <% } %>
 
     <form method="POST" action="/login" class="stack">
@@ -24,7 +24,9 @@
       <button type="submit">Login</button>
     </form>
 
-    <p class="muted small">Admin can create users and assign temp passwords.</p>
+    <p class="muted small">
+      Admin can create users and assign temporary passwords.
+    </p>
   </div>
 </body>
 </html>
