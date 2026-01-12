@@ -1,31 +1,41 @@
-const sqlite3 = require("sqlite3").verbose();
-const path = require("path");
-const fs = require("fs");
+const { Pool } = require("pg");
 
-const DB_PATH = process.env.DB_PATH || "/var/data/aei.db";
-
-// Ensure directory exists (Render disk)
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-
-const db = new sqlite3.Database(DB_PATH);
-
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS students (
-      id TEXT PRIMARY KEY,
-      first_name TEXT,
-      last_name TEXT,
-      level INTEGER,
-      status TEXT,
-      original_enrollment_date TEXT,
-      state_license_number TEXT,
-      rapids_number TEXT,
-      employer TEXT,
-      phone TEXT,
-      email TEXT,
-      home_address TEXT
-    )
-  `);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
-module.exports = db;
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      role TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS students (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      first_name TEXT,
+      last_name TEXT,
+      level INTEGER DEFAULT 1,
+      status TEXT DEFAULT 'Currently enrolled in class',
+      enrollment_date DATE,
+      phone TEXT,
+      address TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS employers (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      company_name TEXT,
+      contact_name TEXT,
+      phone TEXT,
+      address TEXT
+    );
+  `);
+}
+
+module.exports = { pool, initDb };
