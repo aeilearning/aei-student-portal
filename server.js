@@ -1,23 +1,49 @@
 const express = require("express");
 const session = require("express-session");
-const db = require("./db");
+const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, "aei.db");
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 app.use(
   session({
-    secret: "aei-prod-secret",
+    secret: "aei-secret-temp",
     resave: false,
     saveUninitialized: false,
   })
 );
 
 // --------------------
-// AUTH (TEMP SIMPLE)
+// DATABASE
+// --------------------
+const db = new sqlite3.Database(DB_PATH);
+
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS students (
+      id TEXT PRIMARY KEY,
+      status TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      level INTEGER,
+      enrollment_date TEXT,
+      state_license TEXT,
+      rapids TEXT,
+      employer TEXT,
+      phone TEXT,
+      email TEXT,
+      address TEXT
+    )
+  `);
+});
+
+// --------------------
+// AUTH
 // --------------------
 const users = [{ email: "cam@aeilearning.com", role: "admin" }];
 
@@ -27,32 +53,33 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-function esc(s = "") {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function newId() {
+  return Date.now().toString().slice(-6);
 }
 
-function newId() {
-  return "S" + Date.now().toString(36);
-}
+const STATUS_OPTIONS = [
+  "Pending enrollment",
+  "Currently enrolled",
+  "Paused",
+  "Dropped class",
+  "Dropped program",
+];
 
 // --------------------
-// AUTH ROUTES
+// ROUTES
 // --------------------
 app.get("/login", (req, res) => {
   res.send(`
-    <h2>AEI Admin Login</h2>
+    <h2>Login</h2>
     <form method="POST">
-      <input name="email" type="email" required />
+      <input name="email" required />
       <button>Login</button>
     </form>
   `);
 });
 
 app.post("/login", (req, res) => {
-  const user = users.find(u => u.email === req.body.email.toLowerCase());
+  const user = users.find(u => u.email === req.body.email);
   if (!user) return res.send("Unauthorized");
   req.session.user = user;
   res.redirect("/admin");
@@ -66,89 +93,102 @@ app.get("/logout", (req, res) => {
 // ADMIN DASHBOARD
 // --------------------
 app.get("/admin", requireAdmin, (req, res) => {
-  db.all(`SELECT * FROM students ORDER BY last_name`, (err, rows) => {
-    const tableRows = rows.map(s => `
+  db.all(`SELECT * FROM students`, (err, students) => {
+    const rows = students.map(s => `
       <tr>
-        <td>${esc(s.id)}</td>
-        <td>${esc(s.first_name)}</td>
-        <td>${esc(s.last_name)}</td>
+        <td>${s.id}</td>
 
         <td>
-          <form method="POST" action="/admin/update/${s.id}">
-            <input name="level" value="${esc(s.level)}" size="2"/>
-        </td>
-
-        <td>
-            <input name="status" value="${esc(s.status)}"/>
-        </td>
-
-        <td>${esc(s.original_enrollment_date)}</td>
-        <td>${esc(s.state_license_number)}</td>
-        <td>${esc(s.rapids_number)}</td>
-        <td>${esc(s.employer)}</td>
-        <td>${esc(s.phone)}</td>
-
-        <td>
-            <input name="email" value="${esc(s.email)}"/>
-        </td>
-
-        <td>
-            <input name="home_address" value="${esc(s.home_address)}"/>
-        </td>
-
-        <td>
-            <button>Save</button>
+          <form method="POST" action="/update-status">
+            <input type="hidden" name="id" value="${s.id}">
+            <select name="status" onchange="this.form.submit()">
+              ${STATUS_OPTIONS.map(o =>
+                `<option ${o === s.status ? "selected" : ""}>${o}</option>`
+              ).join("")}
+            </select>
           </form>
         </td>
 
+        <td>${s.first_name}</td>
+        <td>${s.last_name}</td>
+
         <td>
-          <form method="POST" action="/admin/delete/${s.id}" onsubmit="return confirm('Delete student permanently?')">
-            <button>DELETE</button>
+          <form method="POST" action="/update-level">
+            <input type="hidden" name="id" value="${s.id}">
+            <select name="level" onchange="this.form.submit()">
+              ${[1,2,3,4].map(l =>
+                `<option ${l === s.level ? "selected" : ""}>${l}</option>`
+              ).join("")}
+            </select>
+          </form>
+        </td>
+
+        <td>${s.enrollment_date || ""}</td>
+        <td>${s.state_license || ""}</td>
+        <td>${s.rapids || ""}</td>
+        <td>${s.employer || ""}</td>
+        <td>${s.phone || ""}</td>
+
+        <td contenteditable="true"
+            onblur="updateField('${s.id}','email',this.innerText)">
+          ${s.email || ""}
+        </td>
+
+        <td contenteditable="true"
+            onblur="updateField('${s.id}','address',this.innerText)">
+          ${s.address || ""}
+        </td>
+
+        <td>
+          <form method="POST" action="/delete">
+            <input type="hidden" name="id" value="${s.id}">
+            <button onclick="return confirm('Delete student?')">❌</button>
           </form>
         </td>
       </tr>
     `).join("");
 
     res.send(`
-      <h1>AEI Student Administration</h1>
+      <h1>Admin Dashboard</h1>
       <a href="/logout">Logout</a>
 
       <h2>Add Student</h2>
-      <form method="POST" action="/admin/add">
-        <input name="first_name" placeholder="First name" required />
-        <input name="last_name" placeholder="Last name" required />
-        <input name="level" placeholder="Level" required />
-        <input name="status" placeholder="Status" />
-        <input name="original_enrollment_date" placeholder="Enrollment date" />
-        <input name="state_license_number" placeholder="State License #" />
-        <input name="rapids_number" placeholder="RAPIDS #" />
-        <input name="employer" placeholder="Employer" />
-        <input name="phone" placeholder="Phone" />
-        <input name="email" placeholder="Email" />
-        <input name="home_address" placeholder="Home Address" />
-        <button>Add Student</button>
+      <form method="POST" action="/add">
+        <input name="first_name" placeholder="First name" required>
+        <input name="last_name" placeholder="Last name" required>
+        <input name="email" placeholder="Email">
+        <input name="enrollment_date" placeholder="Enrollment date">
+        <button>Add</button>
       </form>
 
-      <h2>Students</h2>
-      <table border="1" cellpadding="4">
+      <table border="1" cellpadding="6">
         <tr>
           <th>ID</th>
+          <th>Status</th>
           <th>First</th>
           <th>Last</th>
           <th>Level</th>
-          <th>Status</th>
-          <th>Enroll Date</th>
-          <th>State Lic #</th>
+          <th>Enrolled</th>
+          <th>State License #</th>
           <th>RAPIDS #</th>
           <th>Employer</th>
           <th>Phone</th>
           <th>Email</th>
           <th>Address</th>
-          <th>Save</th>
           <th>Delete</th>
         </tr>
-        ${tableRows || "<tr><td colspan='14'>No students</td></tr>"}
+        ${rows}
       </table>
+
+      <script>
+        function updateField(id, field, value) {
+          fetch('/update-field', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({id, field, value})
+          });
+        }
+      </script>
     `);
   });
 });
@@ -156,49 +196,51 @@ app.get("/admin", requireAdmin, (req, res) => {
 // --------------------
 // ACTIONS
 // --------------------
-app.post("/admin/add", requireAdmin, (req, res) => {
-  const s = req.body;
+app.post("/add", requireAdmin, (req, res) => {
   db.run(
-    `INSERT INTO students VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO students VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       newId(),
-      s.first_name,
-      s.last_name,
-      s.level,
-      s.status,
-      s.original_enrollment_date,
-      s.state_license_number,
-      s.rapids_number,
-      s.employer,
-      s.phone,
-      s.email,
-      s.home_address
+      "Pending enrollment",
+      req.body.first_name,
+      req.body.last_name,
+      1,
+      req.body.enrollment_date,
+      "", "", "", "", req.body.email, ""
     ],
     () => res.redirect("/admin")
   );
 });
 
-app.post("/admin/update/:id", requireAdmin, (req, res) => {
-  const s = req.body;
-  db.run(
-    `UPDATE students SET
-      level = ?,
-      status = ?,
-      email = ?,
-      home_address = ?
-     WHERE id = ?`,
-    [s.level, s.status, s.email, s.home_address, req.params.id],
+app.post("/update-status", requireAdmin, (req, res) => {
+  db.run(`UPDATE students SET status=? WHERE id=?`,
+    [req.body.status, req.body.id],
     () => res.redirect("/admin")
   );
 });
 
-app.post("/admin/delete/:id", requireAdmin, (req, res) => {
-  db.run(`DELETE FROM students WHERE id = ?`, [req.params.id], () =>
+app.post("/update-level", requireAdmin, (req, res) => {
+  db.run(`UPDATE students SET level=? WHERE id=?`,
+    [req.body.level, req.body.id],
+    () => res.redirect("/admin")
+  );
+});
+
+app.post("/update-field", requireAdmin, (req, res) => {
+  db.run(
+    `UPDATE students SET ${req.body.field}=? WHERE id=?`,
+    [req.body.value, req.body.id],
+    () => res.sendStatus(200)
+  );
+});
+
+app.post("/delete", requireAdmin, (req, res) => {
+  db.run(`DELETE FROM students WHERE id=?`, [req.body.id], () =>
     res.redirect("/admin")
   );
 });
 
 // --------------------
-app.listen(PORT, () => {
-  console.log("AEI portal running on port " + PORT);
-});
+app.listen(PORT, () =>
+  console.log("AEI portal running on port", PORT)
+);
