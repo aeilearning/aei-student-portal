@@ -1,5 +1,6 @@
 const express = require("express");
 const session = require("express-session");
+const db = require("./db");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,91 +10,52 @@ app.use(express.json());
 
 app.use(
   session({
-    secret: "aei-secret-temp",
+    secret: "aei-prod-secret",
     resave: false,
     saveUninitialized: false,
   })
 );
 
 // --------------------
-// TEMP DATA (IN-MEMORY)
+// AUTH (TEMP SIMPLE)
 // --------------------
-const users = [
-  { email: "cam@aeilearning.com", role: "admin" },
-];
-
-const STATUS_OPTIONS = [
-  "Pending enrollment",
-  "Currently enrolled in class",
-  "Completed level",
-  "Pending re-enrollment",
-  "Paused",
-  "Dropped class",
-  "Dropped program",
-];
-
-const students = [];
-
-// Student ID counter (001000 → ∞)
-let studentIdCounter = 1000;
-
-// --------------------
-// HELPERS
-// --------------------
-function requireLogin(req, res, next) {
-  if (!req.session.user) return res.redirect("/login");
-  next();
-}
+const users = [{ email: "cam@aeilearning.com", role: "admin" }];
 
 function requireAdmin(req, res, next) {
   if (!req.session.user) return res.redirect("/login");
-  if (req.session.user.role !== "admin") {
-    return res.status(403).send("Admin only.");
-  }
+  if (req.session.user.role !== "admin") return res.sendStatus(403);
   next();
 }
 
 function esc(s = "") {
   return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
-function nextStudentId() {
-  const id = String(studentIdCounter).padStart(6, "0");
-  studentIdCounter++;
-  return id;
+function newId() {
+  return "S" + Date.now().toString(36);
 }
 
 // --------------------
-// ROUTES
-// --------------------
-app.get("/", (req, res) => {
-  if (!req.session.user) return res.redirect("/login");
-  if (req.session.user.role === "admin") return res.redirect("/admin");
-  res.send("Student portal coming soon.");
-});
-
-// --------------------
-// AUTH
+// AUTH ROUTES
 // --------------------
 app.get("/login", (req, res) => {
   res.send(`
-    <h2>AEI Learning Portal Login</h2>
-    <form method="POST" action="/login">
-      <input type="email" name="email" required />
-      <button type="submit">Login</button>
+    <h2>AEI Admin Login</h2>
+    <form method="POST">
+      <input name="email" type="email" required />
+      <button>Login</button>
     </form>
   `);
 });
 
 app.post("/login", (req, res) => {
-  const email = (req.body.email || "").toLowerCase();
-  const user = users.find(u => u.email === email);
-  if (!user) return res.send("User not found.");
+  const user = users.find(u => u.email === req.body.email.toLowerCase());
+  if (!user) return res.send("Unauthorized");
   req.session.user = user;
-  res.redirect("/");
+  res.redirect("/admin");
 });
 
 app.get("/logout", (req, res) => {
@@ -104,115 +66,136 @@ app.get("/logout", (req, res) => {
 // ADMIN DASHBOARD
 // --------------------
 app.get("/admin", requireAdmin, (req, res) => {
-  const rows = students.map(s => `
-    <tr>
-      <td>${esc(s.studentId)}</td>
-      <td>${esc(s.firstName)} ${esc(s.lastName)}</td>
-      <td>${esc(s.email)}</td>
-      <td>
-        <form method="POST" action="/admin/students/${s.studentId}/level">
-          <select name="level" onchange="this.form.submit()">
-            ${[1,2,3,4].map(l =>
-              `<option ${l === s.level ? "selected" : ""}>${l}</option>`
-            ).join("")}
-          </select>
-        </form>
-      </td>
-      <td>${esc(s.yearEnrolled)}</td>
-      <td>
-        <form method="POST" action="/admin/students/${s.studentId}/status">
-          <select name="status" onchange="this.form.submit()">
-            ${STATUS_OPTIONS.map(opt =>
-              `<option ${opt === s.status ? "selected" : ""}>${opt}</option>`
-            ).join("")}
-          </select>
-        </form>
-      </td>
-    </tr>
-  `).join("");
-
-  res.send(`
-    <h1>Admin Dashboard</h1>
-    <p>Logged in as: ${esc(req.session.user.email)}</p>
-    <a href="/logout">Logout</a>
-
-    <h2>Add Student</h2>
-    <form method="POST" action="/admin/students">
-      <input name="firstName" placeholder="First name" />
-      <input name="lastName" placeholder="Last name" />
-      <input name="email" placeholder="Email" required />
-      <input name="yearEnrolled" placeholder="Year enrolled (e.g. 2025)" />
-      <select name="level">
-        <option>1</option><option>2</option><option>3</option><option>4</option>
-      </select>
-      <select name="status">
-        ${STATUS_OPTIONS.map(s => `<option>${s}</option>`).join("")}
-      </select>
-      <button>Add</button>
-    </form>
-
-    <h2>Students</h2>
-    <table border="1" cellpadding="6">
+  db.all(`SELECT * FROM students ORDER BY last_name`, (err, rows) => {
+    const tableRows = rows.map(s => `
       <tr>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Email</th>
-        <th>Level</th>
-        <th>Year Enrolled</th>
-        <th>Status</th>
+        <td>${esc(s.id)}</td>
+        <td>${esc(s.first_name)}</td>
+        <td>${esc(s.last_name)}</td>
+
+        <td>
+          <form method="POST" action="/admin/update/${s.id}">
+            <input name="level" value="${esc(s.level)}" size="2"/>
+        </td>
+
+        <td>
+            <input name="status" value="${esc(s.status)}"/>
+        </td>
+
+        <td>${esc(s.original_enrollment_date)}</td>
+        <td>${esc(s.state_license_number)}</td>
+        <td>${esc(s.rapids_number)}</td>
+        <td>${esc(s.employer)}</td>
+        <td>${esc(s.phone)}</td>
+
+        <td>
+            <input name="email" value="${esc(s.email)}"/>
+        </td>
+
+        <td>
+            <input name="home_address" value="${esc(s.home_address)}"/>
+        </td>
+
+        <td>
+            <button>Save</button>
+          </form>
+        </td>
+
+        <td>
+          <form method="POST" action="/admin/delete/${s.id}" onsubmit="return confirm('Delete student permanently?')">
+            <button>DELETE</button>
+          </form>
+        </td>
       </tr>
-      ${rows || "<tr><td colspan='6'>No students</td></tr>"}
-    </table>
-  `);
-});
+    `).join("");
 
-// --------------------
-// ADMIN ACTIONS
-// --------------------
-app.post("/admin/students", requireAdmin, (req, res) => {
-  students.push({
-    studentId: nextStudentId(),
-    firstName: req.body.firstName || "",
-    lastName: req.body.lastName || "",
-    email: req.body.email || "",
-    level: Number(req.body.level || 1),
-    yearEnrolled: req.body.yearEnrolled || "",
-    status: req.body.status || "Pending enrollment",
+    res.send(`
+      <h1>AEI Student Administration</h1>
+      <a href="/logout">Logout</a>
+
+      <h2>Add Student</h2>
+      <form method="POST" action="/admin/add">
+        <input name="first_name" placeholder="First name" required />
+        <input name="last_name" placeholder="Last name" required />
+        <input name="level" placeholder="Level" required />
+        <input name="status" placeholder="Status" />
+        <input name="original_enrollment_date" placeholder="Enrollment date" />
+        <input name="state_license_number" placeholder="State License #" />
+        <input name="rapids_number" placeholder="RAPIDS #" />
+        <input name="employer" placeholder="Employer" />
+        <input name="phone" placeholder="Phone" />
+        <input name="email" placeholder="Email" />
+        <input name="home_address" placeholder="Home Address" />
+        <button>Add Student</button>
+      </form>
+
+      <h2>Students</h2>
+      <table border="1" cellpadding="4">
+        <tr>
+          <th>ID</th>
+          <th>First</th>
+          <th>Last</th>
+          <th>Level</th>
+          <th>Status</th>
+          <th>Enroll Date</th>
+          <th>State Lic #</th>
+          <th>RAPIDS #</th>
+          <th>Employer</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th>Address</th>
+          <th>Save</th>
+          <th>Delete</th>
+        </tr>
+        ${tableRows || "<tr><td colspan='14'>No students</td></tr>"}
+      </table>
+    `);
   });
-  res.redirect("/admin");
 });
 
-// Manual level change (admin override)
-app.post("/admin/students/:id/level", requireAdmin, (req, res) => {
-  const student = students.find(s => s.studentId === req.params.id);
-  if (student) {
-    student.level = Number(req.body.level);
-  }
-  res.redirect("/admin");
+// --------------------
+// ACTIONS
+// --------------------
+app.post("/admin/add", requireAdmin, (req, res) => {
+  const s = req.body;
+  db.run(
+    `INSERT INTO students VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      newId(),
+      s.first_name,
+      s.last_name,
+      s.level,
+      s.status,
+      s.original_enrollment_date,
+      s.state_license_number,
+      s.rapids_number,
+      s.employer,
+      s.phone,
+      s.email,
+      s.home_address
+    ],
+    () => res.redirect("/admin")
+  );
 });
 
-// Status change + automation
-app.post("/admin/students/:id/status", requireAdmin, (req, res) => {
-  const student = students.find(s => s.studentId === req.params.id);
-  const newStatus = req.body.status;
+app.post("/admin/update/:id", requireAdmin, (req, res) => {
+  const s = req.body;
+  db.run(
+    `UPDATE students SET
+      level = ?,
+      status = ?,
+      email = ?,
+      home_address = ?
+     WHERE id = ?`,
+    [s.level, s.status, s.email, s.home_address, req.params.id],
+    () => res.redirect("/admin")
+  );
+});
 
-  if (!student || !STATUS_OPTIONS.includes(newStatus)) {
-    return res.redirect("/admin");
-  }
-
-  // AUTOMATION TRIGGER
-  if (newStatus === "Completed level") {
-    if (student.level < 4) {
-      student.level += 1;
-      student.status = "Pending re-enrollment";
-    } else {
-      student.status = "Completed level";
-    }
-  } else {
-    student.status = newStatus;
-  }
-
-  res.redirect("/admin");
+app.post("/admin/delete/:id", requireAdmin, (req, res) => {
+  db.run(`DELETE FROM students WHERE id = ?`, [req.params.id], () =>
+    res.redirect("/admin")
+  );
 });
 
 // --------------------
