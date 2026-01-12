@@ -1,7 +1,7 @@
 {
   "name": "aei-student-portal",
   "version": "1.0.0",
-  "description": "AEI Learning Student Portal",
+  "description": "AEI Learning Student & Employer Portal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "express-session": "^1.17.3",
-    "sqlite3": "^5.1.7"
+    "express-session": "^1.17.3"
   }
 }
