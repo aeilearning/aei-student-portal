@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AEI Portal Login</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="container">
+  <div class="card">
+    <h1>AEI Learning Portal</h1>
+    <p class="muted">Sign in with your email + password.</p>
+
+    <% if (error) { %>
+      <div class="alert"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/login" class="stack">
+      <label>Email</label>
+      <input name="email" type="email" required />
+
+      <label>Password</label>
+      <input name="password" type="password" required />
+
+      <button type="submit">Login</button>
+    </form>
+
+    <p class="muted small">Admin can create users and assign temp passwords.</p>
+  </div>
+</body>
+</html>
