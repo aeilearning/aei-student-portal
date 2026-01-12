@@ -1,6 +1,3 @@
-console.log("ADMIN_EMAIL:", process.env.ADMIN_EMAIL);
-console.log("ADMIN_PASSWORD exists:", !!process.env.ADMIN_PASSWORD);
-
 require("dotenv").config();
 
 const express = require("express");
