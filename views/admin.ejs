@@ -2,142 +2,75 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Admin - AEI Portal</title>
+  <title>AEI Admin</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body class="container">
+
   <div class="topbar">
-    <div>
-      <h1>Admin Dashboard</h1>
-      <div class="muted">Logged in as <b><%= user.email %></b></div>
-    </div>
-    <a class="link" href="/logout">Logout</a>
+    <h1>Admin Dashboard</h1>
+    <div class="muted">Logged in as <b><%= user.email %></b></div>
+    <a href="/logout">Logout</a>
   </div>
 
   <% if (message) { %>
     <div class="alert"><%= message %></div>
   <% } %>
 
-  <div class="grid2">
-    <div class="card">
-      <h2>Add Student</h2>
-      <form method="POST" action="/admin/students" class="stack">
-        <label>Email *</label>
-        <input name="email" type="email" required />
+  <h2>Add Student</h2>
+  <form method="POST" action="/admin/students">
+    <input name="email" placeholder="Student email" required />
+    <button>Add</button>
+  </form>
 
-        <label>Temp Password</label>
-        <input name="tempPassword" placeholder="Welcome123!" />
+  <h2>Students</h2>
 
-        <label>First Name</label>
-        <input name="firstName" />
+  <table border="1" cellpadding="6">
+    <tr>
+      <th>ID</th>
+      <th>Status</th>
+      <th>Level</th>
+      <th>Email</th>
+      <th>Save</th>
+      <th>Delete</th>
+    </tr>
 
-        <label>Last Name</label>
-        <input name="lastName" />
+    <% students.forEach(s => { %>
+      <tr>
+        <td><%= s.student_id %></td>
 
-        <label>Phone</label>
-        <input name="phone" />
+        <td>
+          <form method="POST" action="/admin/update/<%= s.id %>">
+            <select name="status">
+              <% STATUSES.forEach(v => { %>
+                <option <%= v === s.status ? "selected" : "" %>><%= v %></option>
+              <% }) %>
+            </select>
+        </td>
 
-        <label>Level</label>
-        <select name="level">
-          <option>1</option><option>2</option><option>3</option><option>4</option>
-        </select>
+        <td>
+            <select name="level">
+              <% LEVELS.forEach(v => { %>
+                <option <%= v === s.level ? "selected" : "" %>><%= v %></option>
+              <% }) %>
+            </select>
+        </td>
 
-        <label>Status</label>
-        <select name="status">
-          <% statusOptions.forEach(s => { %>
-            <option><%= s %></option>
-          <% }) %>
-        </select>
+        <td><%= s.email || "" %></td>
 
-        <label>Employer Name</label>
-        <input name="employerName" />
+        <td>
+            <button>Save</button>
+          </form>
+        </td>
 
-        <button>Add Student</button>
-      </form>
-    </div>
+        <td>
+          <form method="POST" action="/admin/delete/<%= s.id %>">
+            <button onclick="return confirm('Delete student?')">X</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+  </table>
 
-    <div class="card">
-      <h2>Add Employer</h2>
-      <form method="POST" action="/admin/employers" class="stack">
-        <label>Email *</label>
-        <input name="email" type="email" required />
-
-        <label>Temp Password</label>
-        <input name="tempPassword" placeholder="Welcome123!" />
-
-        <label>Company Name</label>
-        <input name="companyName" />
-
-        <label>Contact Name</label>
-        <input name="contactName" />
-
-        <label>Phone</label>
-        <input name="phone" />
-
-        <button>Add Employer</button>
-      </form>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Students</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th><th>Name</th><th>Email</th><th>Level</th><th>Employer</th><th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% if (students.length === 0) { %>
-          <tr><td colspan="6" class="muted">No students</td></tr>
-        <% } %>
-
-        <% students.forEach(s => { %>
-          <tr>
-            <td><%= s.id %></td>
-            <td><%= s.first_name %> <%= s.last_name %></td>
-            <td><%= s.email %></td>
-            <td><%= s.level %></td>
-            <td><%= s.employer_name %></td>
-            <td>
-              <form method="POST" action="/admin/students/<%= s.id %>/status">
-                <select name="status" onchange="this.form.submit()">
-                  <% statusOptions.forEach(opt => { %>
-                    <option <%= opt === s.status ? "selected" : "" %>><%= opt %></option>
-                  <% }) %>
-                </select>
-              </form>
-            </td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>Employers</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th><th>Company</th><th>Contact</th><th>Email</th><th>Phone</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% if (employers.length === 0) { %>
-          <tr><td colspan="5" class="muted">No employers</td></tr>
-        <% } %>
-
-        <% employers.forEach(e => { %>
-          <tr>
-            <td><%= e.id %></td>
-            <td><%= e.company_name %></td>
-            <td><%= e.contact_name %></td>
-            <td><%= e.email %></td>
-            <td><%= e.phone %></td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
 </body>
 </html>
