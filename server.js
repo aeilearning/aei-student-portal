@@ -13,85 +13,81 @@ app.use(express.json());
 
 app.use(
   session({
-    secret: "TEMP-SESSION-SECRET-CHANGE-LATER",
+    secret: "CHANGE-THIS-TO-A-REAL-SECRET-LATER",
     resave: false,
     saveUninitialized: false
   })
 );
 
 /* --------------------
-   USERS (LOGIN ONLY)
+   USERS (TEMP / IN-MEMORY)
 -------------------- */
 const users = [
   {
     id: 1,
+    role: "admin",
     email: "cam@aeilearning.com",
     passwordHash: bcrypt.hashSync("ChangeMe123!", 10),
-    role: "admin"
-  }
-];
-
-/* --------------------
-   STUDENTS (PROFILE DATA)
--------------------- */
-const students = [
-  {
-    id: 1,
-    userId: 1,
     firstName: "Cam",
-    lastName: "Admin",
+    lastName: "Admin"
+  },
+  {
+    id: 2,
+    role: "student",
+    email: "student@test.com",
+    passwordHash: bcrypt.hashSync("Student123!", 10),
+    firstName: "Test",
+    lastName: "Student",
     phone: "",
-    email: "cam@aeilearning.com",
     address: "",
-    needsReview: false
+    profileChanged: false
   }
 ];
 
 /* --------------------
-   HELPERS
+   AUTH HELPERS
 -------------------- */
+function getCurrentUser(req) {
+  return users.find(u => u.id === req.session.userId);
+}
+
 function requireLogin(req, res, next) {
-  if (!req.session.userId) return res.redirect("/login");
+  if (!req.session.userId) {
+    return res.redirect("/login");
+  }
   next();
 }
 
 function requireAdmin(req, res, next) {
-  const user = users.find(u => u.id === req.session.userId);
+  const user = getCurrentUser(req);
   if (!user || user.role !== "admin") {
     return res.status(403).send("Admins only");
   }
   next();
 }
 
-function currentUser(req) {
-  return users.find(u => u.id === req.session.userId);
-}
-
 /* --------------------
-   HOME
+   ROOT ROUTE
 -------------------- */
 app.get("/", requireLogin, (req, res) => {
-  const user = currentUser(req);
+  const user = getCurrentUser(req);
 
-  res.send(`
-    <h1>AEI Learning Portal</h1>
-    <p>Logged in as ${user.email}</p>
+  if (user.role === "admin") {
+    return res.redirect("/admin");
+  }
 
-    ${user.role === "admin" ? `<a href="/admin">Admin Dashboard</a><br/>` : ""}
-    <a href="/profile">My Profile</a><br/>
-    <a href="/logout">Logout</a>
-  `);
+  res.redirect("/student");
 });
 
 /* --------------------
-   LOGIN
+   LOGIN / LOGOUT
 -------------------- */
 app.get("/login", (req, res) => {
   res.send(`
-    <h2>Login</h2>
+    <h2>AEI Portal Login</h2>
     <form method="POST">
-      <input name="email" placeholder="Email" required /><br/>
-      <input name="password" type="password" placeholder="Password" required /><br/>
+      <input name="email" placeholder="Email" required /><br/><br/>
+      <input name="password" type="password" placeholder="Password" required /><br/><br/>
       <button>Login</button>
     </form>
   `);
@@ -101,97 +97,145 @@ app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const user = users.find(u => u.email === email);
 
-  if (!user) return res.send("Invalid email or password");
+  if (!user) {
+    return res.send("Invalid email or password");
+  }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.send("Invalid email or password");
+  if (!ok) {
+    return res.send("Invalid email or password");
+  }
 
   req.session.userId = user.id;
   res.redirect("/");
 });
 
-/* --------------------
-   LOGOUT
--------------------- */
 app.get("/logout", (req, res) => {
-  req.session.destroy(() => res.redirect("/login"));
-});
-
-/* --------------------
-   STUDENT PROFILE
--------------------- */
-app.get("/profile", requireLogin, (req, res) => {
-  const student = students.find(s => s.userId === req.session.userId);
-
-  if (!student) return res.send("No student profile found");
-
-  res.send(`
-    <h2>My Profile</h2>
-
-    <form method="POST">
-      First Name: <input name="firstName" value="${student.firstName}" disabled /><br/>
-      Last Name: <input name="lastName" value="${student.lastName}" /><br/>
-      Phone: <input name="phone" value="${student.phone}" /><br/>
-      Email: <input name="email" value="${student.email}" /><br/>
-      Address:<br/>
-      <textarea name="address">${student.address}</textarea><br/><br/>
-
-      <button>Save Changes</button>
-    </form>
-
-    <br/>
-    <a href="/">Back</a>
-  `);
-});
-
-app.post("/profile", requireLogin, (req, res) => {
-  const student = students.find(s => s.userId === req.session.userId);
-  if (!student) return res.send("No student profile found");
-
-  student.lastName = req.body.lastName;
-  student.phone = req.body.phone;
-  student.email = req.body.email;
-  student.address = req.body.address;
-
-  student.needsReview = true;
-
-  res.send(`
-    <p>Profile updated. Admin has been notified.</p>
-    <a href="/">Return Home</a>
-  `);
+  req.session.destroy(() => {
+    res.redirect("/login");
+  });
 });
 
 /* --------------------
    ADMIN DASHBOARD
 -------------------- */
 app.get("/admin", requireLogin, requireAdmin, (req, res) => {
-  const rows = students.map(s => `
-    <tr>
-      <td>${s.id}</td>
-      <td>${s.needsReview ? "🚩" : ""}</td>
-      <td>${s.firstName} ${s.lastName}</td>
-      <td>${s.email}</td>
-      <td>${s.phone}</td>
-    </tr>
-  `).join("");
+  const studentRows = users
+    .filter(u => u.role === "student")
+    .map(s => `
+      <tr>
+        <td>${s.firstName} ${s.lastName}</td>
+        <td>${s.email}</td>
+        <td>${s.profileChanged ? "⚠️ UPDATED" : "OK"}</td>
+        <td>
+          ${s.profileChanged ? `
+            <form method="POST" action="/admin/clear-flag/${s.id}">
+              <button>Clear Flag</button>
+            </form>
+          ` : ""}
+        </td>
+      </tr>
+    `)
+    .join("");
 
   res.send(`
-    <h2>Admin Dashboard</h2>
+    <h1>Admin Dashboard</h1>
+    <p>Logged in as Admin</p>
 
-    <table border="1" cellpadding="6">
+    <table border="1" cellpadding="8">
       <tr>
-        <th>ID</th>
-        <th>Flag</th>
-        <th>Name</th>
+        <th>Student</th>
         <th>Email</th>
-        <th>Phone</th>
+        <th>Status</th>
+        <th>Action</th>
       </tr>
-      ${rows}
+      ${studentRows || "<tr><td colspan='4'>No students</td></tr>"}
     </table>
 
     <br/>
-    <a href="/">Back</a>
+    <a href="/logout">Logout</a>
   `);
+});
+
+app.post("/admin/clear-flag/:id", requireLogin, requireAdmin, (req, res) => {
+  const student = users.find(u => u.id == req.params.id && u.role === "student");
+  if (student) {
+    student.profileChanged = false;
+  }
+  res.redirect("/admin");
+});
+
+/* --------------------
+   STUDENT DASHBOARD
+-------------------- */
+app.get("/student", requireLogin, (req, res) => {
+  const user = getCurrentUser(req);
+
+  if (user.role !== "student") {
+    return res.status(403).send("Students only");
+  }
+
+  res.send(`
+    <h1>Student Portal</h1>
+    <p>Welcome ${user.firstName} ${user.lastName}</p>
+
+    <a href="/student/profile">Edit My Profile</a><br/><br/>
+    <a href="/logout">Logout</a>
+  `);
+});
+
+/* --------------------
+   STUDENT PROFILE
+-------------------- */
+app.get("/student/profile", requireLogin, (req, res) => {
+  const user = getCurrentUser(req);
+
+  if (user.role !== "student") {
+    return res.status(403).send("Students only");
+  }
+
+  res.send(`
+    <h2>My Profile</h2>
+
+    <form method="POST">
+      First Name:<br/>
+      <input name="firstName" value="${user.firstName}" /><br/><br/>
+
+      Last Name:<br/>
+      <input name="lastName" value="${user.lastName}" /><br/><br/>
+
+      Phone:<br/>
+      <input name="phone" value="${user.phone || ""}" /><br/><br/>
+
+      Email:<br/>
+      <input name="email" value="${user.email}" /><br/><br/>
+
+      Address:<br/>
+      <textarea name="address">${user.address || ""}</textarea><br/><br/>
+
+      <button>Save Changes</button>
+    </form>
+
+    <br/>
+    <a href="/student">Back</a>
+  `);
+});
+
+app.post("/student/profile", requireLogin, (req, res) => {
+  const user = getCurrentUser(req);
+
+  if (user.role !== "student") {
+    return res.status(403).send("Students only");
+  }
+
+  user.firstName = req.body.firstName;
+  user.lastName = req.body.lastName;
+  user.phone = req.body.phone;
+  user.email = req.body.email;
+  user.address = req.body.address;
+  user.profileChanged = true;
+
+  res.redirect("/student");
 });
 
 /* --------------------
