@@ -33,9 +33,8 @@ const STATUSES = [
   "Dropped"
 ];
 
-/* ---------- AUTH (TEMP ADMIN) ---------- */
+/* ---------- TEMP ADMIN AUTH ---------- */
 app.use((req, res, next) => {
-  // TEMP: auto-admin until real auth is added
   req.session.user = { role: "admin", email: "admin@aei.local" };
   next();
 });
@@ -64,6 +63,10 @@ async function initDb() {
 initDb();
 
 /* ---------- ROUTES ---------- */
+app.get("/", (req, res) => {
+  res.send("AEI Student Portal running");
+});
+
 app.get("/admin", async (req, res) => {
   const { rows } = await pool.query(
     "SELECT * FROM students ORDER BY id ASC"
@@ -111,7 +114,7 @@ app.get("/admin", async (req, res) => {
   res.send(`
     <h1>Admin Dashboard</h1>
 
-    <h2>Add Student (basic)</h2>
+    <h2>Add Student</h2>
     <form method="POST" action="/admin/add">
       <input name="first_name" placeholder="First name" />
       <input name="last_name" placeholder="Last name" />
