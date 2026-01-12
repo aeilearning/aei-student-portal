@@ -1,45 +1,31 @@
-const Database = require("better-sqlite3");
+const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
+const fs = require("fs");
 
-// Single persistent DB file
-const db = new Database("aei.db");
+const DB_PATH = process.env.DB_PATH || "/var/data/aei.db";
 
-// ---- TABLES ----
-db.exec(`
-  CREATE TABLE IF NOT EXISTS students (
-    id TEXT PRIMARY KEY,
-    firstName TEXT,
-    lastName TEXT,
-    email TEXT UNIQUE,
-    level INTEGER,
-    status TEXT,
-    yearEnrolled TEXT,
-    createdAt TEXT
-  );
+// Ensure directory exists (Render disk)
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
-  CREATE TABLE IF NOT EXISTS meta (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
-`);
+const db = new sqlite3.Database(DB_PATH);
 
-// ---- INITIALIZE STUDENT ID COUNTER ----
-const row = db.prepare("SELECT value FROM meta WHERE key = 'next_student_id'").get();
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS students (
+      id TEXT PRIMARY KEY,
+      first_name TEXT,
+      last_name TEXT,
+      level INTEGER,
+      status TEXT,
+      original_enrollment_date TEXT,
+      state_license_number TEXT,
+      rapids_number TEXT,
+      employer TEXT,
+      phone TEXT,
+      email TEXT,
+      home_address TEXT
+    )
+  `);
+});
 
-if (!row) {
-  db.prepare(
-    "INSERT INTO meta (key, value) VALUES ('next_student_id', ?)"
-  ).run("1000");
-}
-
-// ---- HELPERS ----
-function getNextStudentId() {
-  const tx = db.transaction(() => {
-    const current = parseInt(
-      db.prepare("SELECT value FROM meta WHERE key = 'next_student_id'").get().value,
-      10
-    );
-
-    const next = current + 1;
-
-    db.prepare(
-      "UPDATE meta SET value = ? WHERE key = '
+module.exports = db;
