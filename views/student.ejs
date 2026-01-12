@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Student - AEI Portal</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="container">
+  <div class="topbar">
+    <div>
+      <h1>Student Portal</h1>
+      <div class="muted">Signed in as <b><%= user.email %></b></div>
+    </div>
+    <a class="link" href="/logout">Logout</a>
+  </div>
+
+  <div class="card">
+    <h2>Your Status</h2>
+    <div class="pill"><%= student.status %></div>
+    <div class="grid2 mt">
+      <div><b>Name:</b> <%= student.first_name %> <%= student.last_name %></div>
+      <div><b>Level:</b> <%= student.level %></div>
+      <div><b>Employer:</b> <%= student.employer_name || "-" %></div>
+      <div><b>Phone:</b> <%= student.phone || "-" %></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Next steps</h2>
+    <ul>
+      <li>Upcoming: class schedule, hours tracking, documents, messaging.</li>
+      <li>If anything is wrong, contact AEI admin.</li>
+    </ul>
+  </div>
+</body>
+</html>
