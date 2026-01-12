@@ -22,7 +22,6 @@ const users = [
   { email: "cam@aeilearning.com", role: "admin" },
 ];
 
-// Statuses
 const STATUS_OPTIONS = [
   "Pending enrollment",
   "Currently enrolled in class",
@@ -33,10 +32,9 @@ const STATUS_OPTIONS = [
   "Dropped program",
 ];
 
-// Student storage
 const students = [];
 
-// Student ID counter (starts at 001000)
+// Student ID counter (001000 → ∞)
 let studentIdCounter = 1000;
 
 // --------------------
@@ -111,7 +109,15 @@ app.get("/admin", requireAdmin, (req, res) => {
       <td>${esc(s.studentId)}</td>
       <td>${esc(s.firstName)} ${esc(s.lastName)}</td>
       <td>${esc(s.email)}</td>
-      <td>${esc(s.level)}</td>
+      <td>
+        <form method="POST" action="/admin/students/${s.studentId}/level">
+          <select name="level" onchange="this.form.submit()">
+            ${[1,2,3,4].map(l =>
+              `<option ${l === s.level ? "selected" : ""}>${l}</option>`
+            ).join("")}
+          </select>
+        </form>
+      </td>
       <td>${esc(s.yearEnrolled)}</td>
       <td>
         <form method="POST" action="/admin/students/${s.studentId}/status">
@@ -137,10 +143,7 @@ app.get("/admin", requireAdmin, (req, res) => {
       <input name="email" placeholder="Email" required />
       <input name="yearEnrolled" placeholder="Year enrolled (e.g. 2025)" />
       <select name="level">
-        <option>1</option>
-        <option>2</option>
-        <option>3</option>
-        <option>4</option>
+        <option>1</option><option>2</option><option>3</option><option>4</option>
       </select>
       <select name="status">
         ${STATUS_OPTIONS.map(s => `<option>${s}</option>`).join("")}
@@ -179,19 +182,34 @@ app.post("/admin/students", requireAdmin, (req, res) => {
   res.redirect("/admin");
 });
 
+// Manual level change (admin override)
+app.post("/admin/students/:id/level", requireAdmin, (req, res) => {
+  const student = students.find(s => s.studentId === req.params.id);
+  if (student) {
+    student.level = Number(req.body.level);
+  }
+  res.redirect("/admin");
+});
+
+// Status change + automation
 app.post("/admin/students/:id/status", requireAdmin, (req, res) => {
   const student = students.find(s => s.studentId === req.params.id);
+  const newStatus = req.body.status;
 
-  if (student && STATUS_OPTIONS.includes(req.body.status)) {
-    student.status = req.body.status;
+  if (!student || !STATUS_OPTIONS.includes(newStatus)) {
+    return res.redirect("/admin");
+  }
 
-    // Auto-advance logic
-    if (req.body.status === "Completed level") {
-      if (student.level < 4) {
-        student.level += 1;
-        student.status = "Pending re-enrollment";
-      }
+  // AUTOMATION TRIGGER
+  if (newStatus === "Completed level") {
+    if (student.level < 4) {
+      student.level += 1;
+      student.status = "Pending re-enrollment";
+    } else {
+      student.status = "Completed level";
     }
+  } else {
+    student.status = newStatus;
   }
 
   res.redirect("/admin");
