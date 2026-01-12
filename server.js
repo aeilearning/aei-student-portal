@@ -93,7 +93,15 @@ app.get("/logout", (req, res) => {
 app.get("/admin", requireAdmin, (req, res) => {
   const rows = students.map(s => `
     <tr>
-      <td>${esc(s.id)}</td>
+    <td>
+  <form method="POST" action="/admin/students/${s.id}/status">
+    <select name="status" onchange="this.form.submit()">
+      ${STATUS_OPTIONS.map(opt =>
+        `<option ${opt === s.status ? "selected" : ""}>${opt}</option>`
+      ).join("")}
+    </select>
+  </form>
+</td>
       <td>${esc(s.firstName)} ${esc(s.lastName)}</td>
       <td>${esc(s.email)}</td>
       <td>${esc(s.level)}</td>
@@ -129,6 +137,13 @@ app.get("/admin", requireAdmin, (req, res) => {
 });
 
 app.post("/admin/students", requireAdmin, (req, res) => {
+  app.post("/admin/students/:id/status", requireAdmin, (req, res) => {
+  const student = students.find(s => s.id === req.params.id);
+  if (student && STATUS_OPTIONS.includes(req.body.status)) {
+    student.status = req.body.status;
+  }
+  res.redirect("/admin");
+});
   students.push({
     id: newId(),
     firstName: req.body.firstName || "",
