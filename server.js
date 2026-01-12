@@ -1,6 +1,6 @@
 const express = require("express");
 const session = require("express-session");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const path = require("path");
 const { Pool } = require("pg");
 
@@ -103,7 +103,7 @@ app.post("/login", async (req, res) => {
   }
 
   const admin = result.rows[0];
-  const ok = await bcrypt.compare(password, admin.password_hash);
+  const ok = bcrypt.compareSync(password, admin.password_hash);
 
   if (!ok) {
     return res.render("login", { message: "Invalid login" });
@@ -117,7 +117,7 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/login"));
 });
 
-/* ---------- ADMIN DASHBOARD ---------- */
+/* ---------- ADMIN ---------- */
 app.get("/admin", requireAdmin, async (req, res) => {
   const { rows } = await pool.query(
     "SELECT * FROM students ORDER BY id ASC"
@@ -132,6 +132,7 @@ app.get("/admin", requireAdmin, async (req, res) => {
   });
 });
 
+/* ---------- STUDENTS ---------- */
 app.post("/admin/students", requireAdmin, async (req, res) => {
   const nextId = await pool.query(
     "SELECT COALESCE(MAX(student_id::int), 999) + 1 AS next FROM students"
@@ -169,7 +170,7 @@ app.post("/admin/delete/:id", requireAdmin, async (req, res) => {
 app.get("/setup-admin", async (req, res) => {
   const email = "admin@aei.local";
   const password = "ChangeMeNow123!";
-  const hash = await bcrypt.hash(password, 10);
+  const hash = bcrypt.hashSync(password, 10);
 
   await pool.query(
     `INSERT INTO admins (email, password_hash)
@@ -178,7 +179,9 @@ app.get("/setup-admin", async (req, res) => {
     [email, hash]
   );
 
-  res.send(`Admin created.<br>Email: ${email}<br>Password: ${password}`);
+  res.send(
+    `Admin created.<br>Email: ${email}<br>Password: ${password}`
+  );
 });
 
 /* ---------- START ---------- */
