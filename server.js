@@ -1,6 +1,7 @@
 const express = require("express");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
+const path = require("path");
 const { Pool } = require("pg");
 
 const app = express();
@@ -12,9 +13,14 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-/* ---------- APP SETUP ---------- */
+/* ---------- VIEW ENGINE ---------- */
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
+
+/* ---------- MIDDLEWARE ---------- */
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
   session({
@@ -66,9 +72,9 @@ async function initDb() {
 }
 initDb();
 
-/* ---------- AUTH HELPERS ---------- */
+/* ---------- AUTH ---------- */
 function requireAdmin(req, res, next) {
-  if (!req.session.user || req.session.user.role !== "admin") {
+  if (!req.session.user) {
     return res.redirect("/login");
   }
   next();
@@ -76,22 +82,12 @@ function requireAdmin(req, res, next) {
 
 /* ---------- ROUTES ---------- */
 app.get("/", (req, res) => {
-  res.send(`
-    <h1>AEI Student Portal</h1>
-    <p><a href="/login">Admin Login</a></p>
-  `);
+  res.redirect("/login");
 });
 
 /* ---------- LOGIN ---------- */
 app.get("/login", (req, res) => {
-  res.send(`
-    <h1>Admin Login</h1>
-    <form method="POST">
-      <input name="email" placeholder="Email" required />
-      <input name="password" type="password" placeholder="Password" required />
-      <button>Login</button>
-    </form>
-  `);
+  res.render("login", { message: null });
 });
 
 app.post("/login", async (req, res) => {
@@ -103,17 +99,17 @@ app.post("/login", async (req, res) => {
   );
 
   if (!result.rows.length) {
-    return res.send("Invalid login");
+    return res.render("login", { message: "Invalid login" });
   }
 
   const admin = result.rows[0];
   const ok = await bcrypt.compare(password, admin.password_hash);
 
   if (!ok) {
-    return res.send("Invalid login");
+    return res.render("login", { message: "Invalid login" });
   }
 
-  req.session.user = { id: admin.id, role: "admin" };
+  req.session.user = { id: admin.id, email: admin.email };
   res.redirect("/admin");
 });
 
@@ -121,8 +117,55 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/login"));
 });
 
-/* ---------- ONE-TIME ADMIN BOOTSTRAP ---------- */
-/* VISIT /setup-admin ONCE, THEN DELETE THIS ROUTE */
+/* ---------- ADMIN DASHBOARD ---------- */
+app.get("/admin", requireAdmin, async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT * FROM students ORDER BY id ASC"
+  );
+
+  res.render("admin", {
+    user: req.session.user,
+    students: rows,
+    LEVELS,
+    STATUSES,
+    message: null
+  });
+});
+
+app.post("/admin/students", requireAdmin, async (req, res) => {
+  const nextId = await pool.query(
+    "SELECT COALESCE(MAX(student_id::int), 999) + 1 AS next FROM students"
+  );
+
+  const studentId = String(nextId.rows[0].next).padStart(6, "0");
+
+  await pool.query(
+    `INSERT INTO students
+     (student_id, status, level, email, enrollment_date)
+     VALUES ($1,'Pending Enrollment','1',$2,CURRENT_DATE)`,
+    [studentId, req.body.email]
+  );
+
+  res.redirect("/admin");
+});
+
+app.post("/admin/update/:id", requireAdmin, async (req, res) => {
+  await pool.query(
+    "UPDATE students SET status=$1, level=$2 WHERE id=$3",
+    [req.body.status, req.body.level, req.params.id]
+  );
+  res.redirect("/admin");
+});
+
+app.post("/admin/delete/:id", requireAdmin, async (req, res) => {
+  await pool.query(
+    "DELETE FROM students WHERE id=$1",
+    [req.params.id]
+  );
+  res.redirect("/admin");
+});
+
+/* ---------- ONE-TIME ADMIN SETUP ---------- */
 app.get("/setup-admin", async (req, res) => {
   const email = "admin@aei.local";
   const password = "ChangeMeNow123!";
@@ -135,109 +178,7 @@ app.get("/setup-admin", async (req, res) => {
     [email, hash]
   );
 
-  res.send(`
-    Admin created.<br/>
-    Email: ${email}<br/>
-    Password: ${password}<br/>
-    DELETE THIS ROUTE NOW.
-  `);
-});
-
-/* ---------- ADMIN DASHBOARD ---------- */
-app.get("/admin", requireAdmin, async (req, res) => {
-  const { rows } = await pool.query(
-    "SELECT * FROM students ORDER BY id ASC"
-  );
-
-  const rowsHtml = rows.map(s => `
-    <tr>
-      <td>${s.student_id}</td>
-      <td>
-        <form method="POST" action="/admin/update/${s.id}">
-          <select name="status">
-            ${STATUSES.map(v =>
-              `<option ${v === s.status ? "selected" : ""}>${v}</option>`
-            ).join("")}
-          </select>
-      </td>
-      <td>${s.first_name || ""}</td>
-      <td>${s.last_name || ""}</td>
-      <td>
-          <select name="level">
-            ${LEVELS.map(v =>
-              `<option ${v === s.level ? "selected" : ""}>${v}</option>`
-            ).join("")}
-          </select>
-      </td>
-      <td>${s.email || ""}</td>
-      <td>
-          <button>Save</button>
-        </form>
-      </td>
-      <td>
-        <form method="POST" action="/admin/delete/${s.id}">
-          <button onclick="return confirm('Delete student?')">X</button>
-        </form>
-      </td>
-    </tr>
-  `).join("");
-
-  res.send(`
-    <h1>Admin Dashboard</h1>
-    <p><a href="/logout">Logout</a></p>
-
-    <h2>Add Student</h2>
-    <form method="POST" action="/admin/add">
-      <input name="first_name" placeholder="First name" />
-      <input name="last_name" placeholder="Last name" />
-      <input name="email" placeholder="Email" />
-      <button>Add</button>
-    </form>
-
-    <table border="1" cellpadding="5">
-      <tr>
-        <th>ID</th>
-        <th>Status</th>
-        <th>First</th>
-        <th>Last</th>
-        <th>Level</th>
-        <th>Email</th>
-        <th>Save</th>
-        <th>Delete</th>
-      </tr>
-      ${rowsHtml}
-    </table>
-  `);
-});
-
-app.post("/admin/add", requireAdmin, async (req, res) => {
-  const nextId = await pool.query(
-    "SELECT COALESCE(MAX(student_id::int), 999) + 1 AS next FROM students"
-  );
-
-  const studentId = String(nextId.rows[0].next).padStart(6, "0");
-
-  await pool.query(
-    `INSERT INTO students
-     (student_id, status, level, first_name, last_name, email, enrollment_date)
-     VALUES ($1,'Pending Enrollment','1',$2,$3,$4,CURRENT_DATE)`,
-    [studentId, req.body.first_name, req.body.last_name, req.body.email]
-  );
-
-  res.redirect("/admin");
-});
-
-app.post("/admin/update/:id", requireAdmin, async (req, res) => {
-  await pool.query(
-    `UPDATE students SET status=$1, level=$2 WHERE id=$3`,
-    [req.body.status, req.body.level, req.params.id]
-  );
-  res.redirect("/admin");
-});
-
-app.post("/admin/delete/:id", requireAdmin, async (req, res) => {
-  await pool.query("DELETE FROM students WHERE id=$1", [req.params.id]);
-  res.redirect("/admin");
+  res.send(`Admin created.<br>Email: ${email}<br>Password: ${password}`);
 });
 
 /* ---------- START ---------- */
