@@ -1,4 +1,4 @@
-// server.js — CLEAN BASELINE + ADMIN SAFE CREATION + AUTH EXTENSIONS
+// server.js — CLEAN BASELINE + ADMIN SAFE CREATION + AUTH LINKS (REGISTER + RESET)
 
 const express = require("express");
 const session = require("express-session");
@@ -12,7 +12,7 @@ const isProduction = process.env.NODE_ENV === "production";
 
 app.set("trust proxy", 1);
 
-/* ===================== CONSTANTS ===================== */
+/* ===================== CONSTANTS FOR VIEWS ===================== */
 const LEVELS = [1, 2, 3, 4];
 const STUDENT_STATUSES = [
   "Pending Enrollment",
@@ -22,7 +22,7 @@ const STUDENT_STATUSES = [
   "Withdrawn",
 ];
 
-/* ===================== DB BOOTSTRAP ===================== */
+/* ===================== BOOTSTRAP DB ===================== */
 (async () => {
   try {
     await initDb();
@@ -68,12 +68,30 @@ const requireRole = (role) => (req, res, next) => {
   next();
 };
 
+function safeTempPassword(input) {
+  // Fixes the “temp password causes error” edge cases:
+  // - trims whitespace
+  // - treats blank string as “no password provided”
+  const v = String(input ?? "").trim();
+  return v.length ? v : null;
+}
+
+function randomPassword() {
+  // a little stronger than slice(-10) and avoids empty/short weirdness
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2, 6);
+}
+
+function isDuplicateEmailError(err) {
+  // Postgres unique violation code is 23505
+  return err && (err.code === "23505" || String(err.message || "").includes("duplicate key"));
+}
+
 /* ===================== ROOT ===================== */
 app.get("/", (req, res) => res.redirect("/login"));
 
 /* ===================== AUTH ===================== */
 app.get("/login", (req, res) => {
-  res.render("login", { message: null });
+  res.render("login", { message: req.query.msg || null });
 });
 
 app.post(
@@ -82,13 +100,12 @@ app.post(
     const email = cleanEmail(req.body.email);
     const password = String(req.body.password || "");
 
-    const { rows } = await pool.query(
-      "SELECT * FROM users WHERE email=$1",
-      [email]
-    );
+    const { rows } = await pool.query("SELECT * FROM users WHERE email=$1", [
+      email,
+    ]);
 
     if (!rows.length || !bcrypt.compareSync(password, rows[0].password_hash)) {
-      return res.render("login", { message: "Invalid email or password" });
+      return res.redirect("/login?msg=" + encodeURIComponent("Invalid email or password"));
     }
 
     req.session.user = {
@@ -101,7 +118,7 @@ app.post(
     if (rows[0].role === "student") return res.redirect("/student");
     if (rows[0].role === "employer") return res.redirect("/employer");
 
-    res.redirect("/login");
+    return res.redirect("/login");
   })
 );
 
@@ -115,11 +132,11 @@ app.get(
   requireRole("admin"),
   wrap(async (req, res) => {
     const students = await pool.query(
-      `SELECT s.*, u.email FROM students s JOIN users u ON u.id = s.user_id`
+      `SELECT s.*, u.email FROM students s JOIN users u ON u.id = s.user_id ORDER BY s.id DESC`
     );
 
     const employers = await pool.query(
-      `SELECT e.*, u.email FROM employers e JOIN users u ON u.id = e.user_id`
+      `SELECT e.*, u.email FROM employers e JOIN users u ON u.id = e.user_id ORDER BY e.id DESC`
     );
 
     res.render("admin", {
@@ -170,9 +187,9 @@ app.get(
 );
 
 /* ===================== ADMIN CREATE ===================== */
-async function createUser({ email, role, tempPassword }) {
-  const password =
-    tempPassword || Math.random().toString(36).slice(-10);
+async function createUser({ email, role, tempPasswordInput }) {
+  const tempPassword = safeTempPassword(tempPasswordInput);
+  const password = tempPassword || randomPassword();
   const hash = bcrypt.hashSync(password, 10);
 
   const user = await pool.query(
@@ -191,27 +208,23 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const email = cleanEmail(req.body.email);
-    if (!email) return res.redirect("/admin?msg=Email required");
+    if (!email) return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
 
     try {
       const { userId, password } = await createUser({
         email,
         role: "student",
-        tempPassword: req.body.temp_password,
+        tempPasswordInput: req.body.temp_password,
       });
 
-      await pool.query(
-        `INSERT INTO students (user_id) VALUES ($1)`,
-        [userId]
-      );
+      await pool.query(`INSERT INTO students (user_id) VALUES ($1)`, [userId]);
 
-      res.redirect(
-        "/admin?msg=" +
-          encodeURIComponent(`Student created. Temp password: ${password}`)
+      return res.redirect(
+        "/admin?msg=" + encodeURIComponent(`Student created. Temp password: ${password}`)
       );
     } catch (e) {
-      if (String(e.message).includes("duplicate key")) {
-        return res.redirect("/admin?msg=Email already exists");
+      if (isDuplicateEmailError(e)) {
+        return res.redirect("/admin?msg=" + encodeURIComponent("Email already exists"));
       }
       throw e;
     }
@@ -224,62 +237,61 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const email = cleanEmail(req.body.email);
-    if (!email) return res.redirect("/admin?msg=Email required");
+    if (!email) return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
 
     try {
       const { userId, password } = await createUser({
         email,
         role: "employer",
-        tempPassword: req.body.temp_password,
+        tempPasswordInput: req.body.temp_password,
       });
 
-      await pool.query(
-        `INSERT INTO employers (user_id) VALUES ($1)`,
-        [userId]
-      );
+      await pool.query(`INSERT INTO employers (user_id) VALUES ($1)`, [userId]);
 
-      res.redirect(
-        "/admin?msg=" +
-          encodeURIComponent(`Employer created. Temp password: ${password}`)
+      return res.redirect(
+        "/admin?msg=" + encodeURIComponent(`Employer created. Temp password: ${password}`)
       );
     } catch (e) {
-      if (String(e.message).includes("duplicate key")) {
-        return res.redirect("/admin?msg=Email already exists");
+      if (isDuplicateEmailError(e)) {
+        return res.redirect("/admin?msg=" + encodeURIComponent("Email already exists"));
       }
       throw e;
     }
   })
 );
 
-/* ===================== REGISTRATION (REQUEST ONLY) ===================== */
+/* ===================== REGISTRATION (REQUEST ONLY FOR NOW) ===================== */
 app.get("/register", (req, res) => {
+  // You’ll add views/register.ejs next
   res.render("register", { message: null });
 });
 
 app.post(
   "/register",
   wrap(async (req, res) => {
-    // For now: request-only (no auto account creation)
+    // Placeholder: request-only (no auto account creation yet)
     console.log("📩 Registration request:", req.body);
+
     res.render("register", {
-      message:
-        "Request received. AEI will contact you if approved.",
+      message: "Request received. AEI will contact you if approved.",
     });
   })
 );
 
-/* ===================== PASSWORD RESET (MANUAL FOR NOW) ===================== */
+/* ===================== PASSWORD RESET (REQUEST ONLY FOR NOW) ===================== */
 app.get("/reset-password", (req, res) => {
+  // You’ll add views/reset-password.ejs next
   res.render("reset-password", { message: null });
 });
 
 app.post(
   "/reset-password",
   wrap(async (req, res) => {
-    // Placeholder: admin/manual reset only
+    // Placeholder: request-only
+    console.log("🔑 Password reset request:", req.body);
+
     res.render("reset-password", {
-      message:
-        "Password resets are handled by AEI administration. Please contact support.",
+      message: "Password resets are handled by AEI administration. Please contact support.",
     });
   })
 );
@@ -302,9 +314,7 @@ app.get("/__routes", (req, res) => {
       .filter((r) => r.route)
       .map(
         (r) =>
-          Object.keys(r.route.methods)[0].toUpperCase() +
-          " " +
-          r.route.path
+          Object.keys(r.route.methods)[0].toUpperCase() + " " + r.route.path
       )
   );
 });
