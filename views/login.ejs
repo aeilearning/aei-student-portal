@@ -8,12 +8,13 @@
 <body class="container">
   <div class="card">
     <h1>AEI Learning Portal</h1>
-    <p class="muted">Sign in with your email + password.</p>
+    <p class="muted">Sign in with your email and password.</p>
 
     <% if (message) { %>
       <div class="alert"><%= message %></div>
     <% } %>
 
+    <!-- LOGIN FORM -->
     <form method="POST" action="/login" class="stack">
       <label>Email</label>
       <input name="email" type="email" required />
@@ -24,8 +25,19 @@
       <button type="submit">Login</button>
     </form>
 
-    <p class="muted small">
-      Admin can create users and assign temporary passwords.
+    <!-- EXTRA ACTIONS -->
+    <div class="stack" style="margin-top: 1rem;">
+      <a href="/reset-password" class="link small">
+        Forgot your password?
+      </a>
+
+      <a href="/register" class="button secondary">
+        Create a New Account
+      </a>
+    </div>
+
+    <p class="muted small" style="margin-top: 1rem;">
+      Accounts are reviewed and approved by AEI administration.
     </p>
   </div>
 </body>
