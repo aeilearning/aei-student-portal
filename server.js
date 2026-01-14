@@ -1,4 +1,4 @@
-// server.js — CLEAN, FINAL BASELINE (ADMIN CREATE ROUTES ADDED)
+// server.js — CLEAN, FINAL BASELINE (ADMIN CREATE ROUTES + ADMIN VIEW FIXED)
 
 const express = require("express");
 const session = require("express-session");
@@ -11,6 +11,16 @@ const PORT = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === "production";
 
 app.set("trust proxy", 1);
+
+/* ===================== CONSTANTS FOR VIEWS ===================== */
+const LEVELS = [1, 2, 3, 4];
+const STUDENT_STATUSES = [
+  "Pending Enrollment",
+  "Active",
+  "On Hold",
+  "Completed",
+  "Withdrawn",
+];
 
 /* ===================== BOOTSTRAP DB ===================== */
 (async () => {
@@ -107,6 +117,7 @@ app.get(
     const students = await pool.query(
       `SELECT s.*, u.email FROM students s JOIN users u ON u.id = s.user_id`
     );
+
     const employers = await pool.query(
       `SELECT e.*, u.email FROM employers e JOIN users u ON u.id = e.user_id`
     );
@@ -115,6 +126,11 @@ app.get(
       user: req.session.user,
       students: students.rows,
       employers: employers.rows,
+
+      // 👇 REQUIRED BY admin.ejs
+      LEVELS,
+      STUDENT_STATUSES,
+
       message: null,
     });
   })
@@ -130,7 +146,11 @@ app.get(
        WHERE s.user_id = $1`,
       [req.session.user.id]
     );
-    res.render("student", { user: req.session.user, student: r.rows[0] });
+
+    res.render("student", {
+      user: req.session.user,
+      student: r.rows[0],
+    });
   })
 );
 
@@ -144,7 +164,11 @@ app.get(
        WHERE e.user_id = $1`,
       [req.session.user.id]
     );
-    res.render("employer", { user: req.session.user, employer: r.rows[0] });
+
+    res.render("employer", {
+      user: req.session.user,
+      employer: r.rows[0],
+    });
   })
 );
 
@@ -158,6 +182,7 @@ app.post(
     const email = cleanEmail(req.body.email);
     const tempPassword =
       req.body.temp_password || Math.random().toString(36).slice(-10);
+
     const hash = bcrypt.hashSync(tempPassword, 10);
 
     const user = await pool.query(
@@ -185,6 +210,7 @@ app.post(
     const email = cleanEmail(req.body.email);
     const tempPassword =
       req.body.temp_password || Math.random().toString(36).slice(-10);
+
     const hash = bcrypt.hashSync(tempPassword, 10);
 
     const user = await pool.query(
