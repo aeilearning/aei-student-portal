@@ -36,7 +36,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false, // MUST remain false until HTTPS/custom domain
+      secure: false, // must remain false until HTTPS/custom domain
     },
   })
 );
@@ -82,9 +82,7 @@ function randomTempPassword() {
 }
 
 /* ---------- ROOT ---------- */
-app.get("/", (req, res) => {
-  res.redirect("/login");
-});
+app.get("/", (req, res) => res.redirect("/login"));
 
 /* ---------- LOGIN ---------- */
 app.get("/login", (req, res) => {
@@ -105,9 +103,7 @@ app.post("/login", async (req, res) => {
   }
 
   const user = result.rows[0];
-  const ok = bcrypt.compareSync(password, user.password_hash);
-
-  if (!ok) {
+  if (!bcrypt.compareSync(password, user.password_hash)) {
     return res.render("login", { message: "Invalid email or password" });
   }
 
@@ -121,7 +117,7 @@ app.post("/login", async (req, res) => {
   if (user.role === "student") return res.redirect("/student");
   if (user.role === "employer") return res.redirect("/employer");
 
-  return res.redirect("/login");
+  res.redirect("/login");
 });
 
 app.get("/logout", (req, res) => {
@@ -162,7 +158,7 @@ app.post("/admin/students/create", requireAdmin, async (req, res) => {
   const email = cleanEmail(req.body.email);
   if (!email) return res.redirect("/admin");
 
-  const password = randomTempPassword();
+  const password = req.body.temp_password || randomTempPassword();
   const hash = bcrypt.hashSync(password, 10);
 
   const user = await pool.query(
@@ -183,8 +179,6 @@ app.post("/admin/students/create", requireAdmin, async (req, res) => {
 
 /* ---------- ADMIN: UPDATE STUDENT ---------- */
 app.post("/admin/students/:id/update", requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-
   await pool.query(
     `UPDATE students
      SET first_name=$1,
@@ -201,7 +195,7 @@ app.post("/admin/students/:id/update", requireAdmin, async (req, res) => {
       req.body.employer_name,
       req.body.status,
       Number(req.body.level),
-      id,
+      Number(req.params.id),
     ]
   );
 
@@ -210,11 +204,66 @@ app.post("/admin/students/:id/update", requireAdmin, async (req, res) => {
 
 /* ---------- ADMIN: DELETE STUDENT ---------- */
 app.post("/admin/students/:id/delete", requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-
   const r = await pool.query(
     "SELECT user_id FROM students WHERE id=$1",
-    [id]
+    [Number(req.params.id)]
+  );
+
+  if (r.rows.length) {
+    await pool.query("DELETE FROM users WHERE id=$1", [r.rows[0].user_id]);
+  }
+
+  res.redirect("/admin");
+});
+
+/* ---------- ADMIN: CREATE EMPLOYER ---------- */
+app.post("/admin/employers/create", requireAdmin, async (req, res) => {
+  const email = cleanEmail(req.body.email);
+  if (!email) return res.redirect("/admin");
+
+  const password = req.body.temp_password || randomTempPassword();
+  const hash = bcrypt.hashSync(password, 10);
+
+  const user = await pool.query(
+    `INSERT INTO users (email, password_hash, role)
+     VALUES ($1,$2,'employer')
+     RETURNING id`,
+    [email, hash]
+  );
+
+  await pool.query(
+    `INSERT INTO employers (user_id)
+     VALUES ($1)`,
+    [user.rows[0].id]
+  );
+
+  res.redirect("/admin");
+});
+
+/* ---------- ADMIN: UPDATE EMPLOYER ---------- */
+app.post("/admin/employers/:id/update", requireAdmin, async (req, res) => {
+  await pool.query(
+    `UPDATE employers
+     SET company_name=$1,
+         contact_name=$2,
+         phone=$3
+     WHERE id=$4`,
+    [
+      req.body.company_name,
+      req.body.contact_name,
+      req.body.phone,
+      Number(req.params.id),
+    ]
+  );
+
+  res.redirect("/admin");
+});
+
+/* ---------- ADMIN: DELETE EMPLOYER ---------- */
+app.post("/admin/employers/:id/delete", requireAdmin, async (req, res) => {
+  const r = await pool.query(
+    "SELECT user_id FROM employers WHERE id=$1",
+    [Number(req.params.id)]
   );
 
   if (r.rows.length) {
@@ -237,12 +286,27 @@ app.get("/student", requireRole("student"), async (req, res) => {
     [req.session.user.id]
   );
 
-  if (!r.rows.length) return res.redirect("/login");
+  res.render("student", { user: req.session.user, student: r.rows[0] });
+});
 
-  res.render("student", {
-    user: req.session.user,
-    student: r.rows[0],
-  });
+app.post("/student/update", requireRole("student"), async (req, res) => {
+  await pool.query(
+    `UPDATE students
+     SET first_name=$1,
+         last_name=$2,
+         phone=$3,
+         employer_name=$4
+     WHERE user_id=$5`,
+    [
+      req.body.first_name,
+      req.body.last_name,
+      req.body.phone,
+      req.body.employer_name,
+      req.session.user.id,
+    ]
+  );
+
+  res.redirect("/student");
 });
 
 /* ======================================================
@@ -258,12 +322,25 @@ app.get("/employer", requireRole("employer"), async (req, res) => {
     [req.session.user.id]
   );
 
-  if (!r.rows.length) return res.redirect("/login");
+  res.render("employer", { user: req.session.user, employer: r.rows[0] });
+});
 
-  res.render("employer", {
-    user: req.session.user,
-    employer: r.rows[0],
-  });
+app.post("/employer/update", requireRole("employer"), async (req, res) => {
+  await pool.query(
+    `UPDATE employers
+     SET company_name=$1,
+         contact_name=$2,
+         phone=$3
+     WHERE user_id=$4`,
+    [
+      req.body.company_name,
+      req.body.contact_name,
+      req.body.phone,
+      req.session.user.id,
+    ]
+  );
+
+  res.redirect("/employer");
 });
 
 /* ---------- START ---------- */
