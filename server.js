@@ -215,3 +215,9 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 AEI portal running on port ${PORT}`);
 });
+app.get("/__routes", (req, res) => {
+  res.json(app._router.stack
+    .filter(r => r.route)
+    .map(r => Object.keys(r.route.methods)[0].toUpperCase() + " " + r.route.path)
+  );
+});
