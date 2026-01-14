@@ -36,7 +36,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: false, // IMPORTANT: must be false until HTTPS is enforced
     },
   })
 );
@@ -79,8 +79,8 @@ app.post("/login", async (req, res) => {
   }
 
   const user = result.rows[0];
-  const ok = bcrypt.compareSync(password, user.password_hash);
 
+  const ok = bcrypt.compareSync(password, user.password_hash);
   if (!ok) {
     return res.render("login", { message: "Invalid email or password" });
   }
@@ -95,7 +95,7 @@ app.post("/login", async (req, res) => {
   if (user.role === "student") return res.redirect("/student");
   if (user.role === "employer") return res.redirect("/employer");
 
-  res.redirect("/login");
+  return res.redirect("/login");
 });
 
 app.get("/logout", (req, res) => {
@@ -103,7 +103,7 @@ app.get("/logout", (req, res) => {
 });
 
 /* ---------- ADMIN (TEMP STUB) ---------- */
-app.get("/admin", requireAdmin, async (req, res) => {
+app.get("/admin", requireAdmin, (req, res) => {
   res.send(
     "Admin logged in successfully. Admin dashboard wiring comes next."
   );
