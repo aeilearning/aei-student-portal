@@ -8,7 +8,10 @@ const pool = new Pool({
 });
 
 async function initDb() {
-  // Create canonical schema (idempotent). Safe to run on every boot.
+  /* ======================================================
+     CORE TABLES (CREATE IF MISSING)
+     ====================================================== */
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id BIGSERIAL PRIMARY KEY,
@@ -17,28 +20,112 @@ async function initDb() {
       role TEXT NOT NULL CHECK (role IN ('admin','student','employer')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS students (
       id BIGSERIAL PRIMARY KEY,
-      user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
       first_name TEXT NOT NULL DEFAULT '',
       last_name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
       level INT NOT NULL DEFAULT 1,
-      status TEXT NOT NULL DEFAULT 'Currently enrolled in class',
+      status TEXT NOT NULL DEFAULT 'Pending Enrollment',
       employer_name TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS employers (
       id BIGSERIAL PRIMARY KEY,
-      user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
       company_name TEXT NOT NULL DEFAULT '',
       contact_name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+  `);
 
+  /* ======================================================
+     MIGRATIONS — SAFE COLUMN ADDS
+     ====================================================== */
+
+  /* ---- students.user_id ---- */
+  await pool.query(`
+    ALTER TABLE students
+    ADD COLUMN IF NOT EXISTS user_id BIGINT;
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE constraint_name = 'students_user_id_unique'
+      ) THEN
+        ALTER TABLE students
+        ADD CONSTRAINT students_user_id_unique UNIQUE (user_id);
+      END IF;
+    END
+    $$;
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE constraint_name = 'students_user_id_fkey'
+      ) THEN
+        ALTER TABLE students
+        ADD CONSTRAINT students_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE;
+      END IF;
+    END
+    $$;
+  `);
+
+  /* ---- employers.user_id ---- */
+  await pool.query(`
+    ALTER TABLE employers
+    ADD COLUMN IF NOT EXISTS user_id BIGINT;
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE constraint_name = 'employers_user_id_unique'
+      ) THEN
+        ALTER TABLE employers
+        ADD CONSTRAINT employers_user_id_unique UNIQUE (user_id);
+      END IF;
+    END
+    $$;
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE constraint_name = 'employers_user_id_fkey'
+      ) THEN
+        ALTER TABLE employers
+        ADD CONSTRAINT employers_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE;
+      END IF;
+    END
+    $$;
+  `);
+
+  /* ======================================================
+     HISTORY TABLE
+     ====================================================== */
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS student_status_history (
       id BIGSERIAL PRIMARY KEY,
       student_id BIGINT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
