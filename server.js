@@ -1,4 +1,4 @@
-// server.js — CLEAN, FINAL BASELINE
+// server.js — CLEAN, FINAL BASELINE (ADMIN CREATE ROUTES ADDED)
 
 const express = require("express");
 const session = require("express-session");
@@ -47,11 +47,6 @@ app.use(
 
 /* ===================== HELPERS ===================== */
 const cleanEmail = (v) => String(v || "").trim().toLowerCase();
-
-const requireLogin = (req, res, next) => {
-  if (!req.session.user) return res.redirect("/login");
-  next();
-};
 
 const requireRole = (role) => (req, res, next) => {
   if (!req.session.user || req.session.user.role !== role) {
@@ -104,68 +99,16 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/login"));
 });
 
-/* ===================== REGISTRATION ===================== */
-app.get("/register", (req, res) => {
-  res.render("register", { message: null });
-});
-
-app.post(
-  "/register",
-  wrap(async (req, res) => {
-    const email = cleanEmail(req.body.email);
-    const password = req.body.password;
-    const role = req.body.role;
-
-    if (!email || !password || !["student", "employer"].includes(role)) {
-      return res.render("register", { message: "Invalid input" });
-    }
-
-    const exists = await pool.query(
-      "SELECT 1 FROM users WHERE email=$1",
-      [email]
-    );
-    if (exists.rows.length) {
-      return res.render("register", { message: "Account already exists" });
-    }
-
-    const hash = bcrypt.hashSync(password, 10);
-    const user = await pool.query(
-      `INSERT INTO users (email, password_hash, role)
-       VALUES ($1,$2,$3)
-       RETURNING id`,
-      [email, hash, role]
-    );
-
-    if (role === "student") {
-      await pool.query(
-        `INSERT INTO students (user_id, status, level)
-         VALUES ($1,'Pending Enrollment',1)`,
-        [user.rows[0].id]
-      );
-    }
-
-    if (role === "employer") {
-      await pool.query(
-        `INSERT INTO employers (user_id)
-         VALUES ($1)`,
-        [user.rows[0].id]
-      );
-    }
-
-    res.redirect("/login");
-  })
-);
-
 /* ===================== DASHBOARDS ===================== */
 app.get(
   "/admin",
   requireRole("admin"),
   wrap(async (req, res) => {
     const students = await pool.query(
-      `SELECT s.*, u.email FROM students s JOIN users u ON u.id=s.user_id`
+      `SELECT s.*, u.email FROM students s JOIN users u ON u.id = s.user_id`
     );
     const employers = await pool.query(
-      `SELECT e.*, u.email FROM employers e JOIN users u ON u.id=e.user_id`
+      `SELECT e.*, u.email FROM employers e JOIN users u ON u.id = e.user_id`
     );
 
     res.render("admin", {
@@ -183,8 +126,8 @@ app.get(
   wrap(async (req, res) => {
     const r = await pool.query(
       `SELECT s.*, u.email
-       FROM students s JOIN users u ON u.id=s.user_id
-       WHERE s.user_id=$1`,
+       FROM students s JOIN users u ON u.id = s.user_id
+       WHERE s.user_id = $1`,
       [req.session.user.id]
     );
     res.render("student", { user: req.session.user, student: r.rows[0] });
@@ -197,11 +140,67 @@ app.get(
   wrap(async (req, res) => {
     const r = await pool.query(
       `SELECT e.*, u.email
-       FROM employers e JOIN users u ON u.id=e.user_id
-       WHERE e.user_id=$1`,
+       FROM employers e JOIN users u ON u.id = e.user_id
+       WHERE e.user_id = $1`,
       [req.session.user.id]
     );
     res.render("employer", { user: req.session.user, employer: r.rows[0] });
+  })
+);
+
+/* ===================== ADMIN CREATE ROUTES ===================== */
+
+// CREATE STUDENT
+app.post(
+  "/admin/students/create",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const email = cleanEmail(req.body.email);
+    const tempPassword =
+      req.body.temp_password || Math.random().toString(36).slice(-10);
+    const hash = bcrypt.hashSync(tempPassword, 10);
+
+    const user = await pool.query(
+      `INSERT INTO users (email, password_hash, role)
+       VALUES ($1,$2,'student')
+       RETURNING id`,
+      [email, hash]
+    );
+
+    await pool.query(
+      `INSERT INTO students (user_id)
+       VALUES ($1)`,
+      [user.rows[0].id]
+    );
+
+    res.redirect("/admin");
+  })
+);
+
+// CREATE EMPLOYER
+app.post(
+  "/admin/employers/create",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const email = cleanEmail(req.body.email);
+    const tempPassword =
+      req.body.temp_password || Math.random().toString(36).slice(-10);
+    const hash = bcrypt.hashSync(tempPassword, 10);
+
+    const user = await pool.query(
+      `INSERT INTO users (email, password_hash, role)
+       VALUES ($1,$2,'employer')
+       RETURNING id`,
+      [email, hash]
+    );
+
+    await pool.query(
+      `INSERT INTO employers (user_id)
+       VALUES ($1)`,
+      [user.rows[0].id]
+    );
+
+    res.redirect("/admin");
   })
 );
 
@@ -215,9 +214,17 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 AEI portal running on port ${PORT}`);
 });
+
+/* ===================== ROUTE LIST ===================== */
 app.get("/__routes", (req, res) => {
-  res.json(app._router.stack
-    .filter(r => r.route)
-    .map(r => Object.keys(r.route.methods)[0].toUpperCase() + " " + r.route.path)
+  res.json(
+    app._router.stack
+      .filter((r) => r.route)
+      .map(
+        (r) =>
+          Object.keys(r.route.methods)[0].toUpperCase() +
+          " " +
+          r.route.path
+      )
   );
 });
