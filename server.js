@@ -2,16 +2,22 @@ const express = require("express");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const path = require("path");
-const { Pool } = require("pg");
+
+const { pool, initDb } = require("./db");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/* ---------- DATABASE ---------- */
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+/* ---------- BOOTSTRAP DATABASE ---------- */
+(async () => {
+  try {
+    await initDb();
+    console.log("Database initialized");
+  } catch (err) {
+    console.error("Database init failed", err);
+    process.exit(1);
+  }
+})();
 
 /* ---------- VIEW ENGINE ---------- */
 app.set("view engine", "ejs");
@@ -26,55 +32,25 @@ app.use(
   session({
     secret: process.env.SESSION_SECRET,
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    },
   })
 );
 
-/* ---------- CONSTANTS ---------- */
-const LEVELS = ["1", "2", "3", "4"];
-const STATUSES = [
-  "Active",
-  "Pending Enrollment",
-  "Paused",
-  "Completed Level",
-  "Dropped"
-];
-
-/* ---------- DB INIT ---------- */
-async function initDb() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS students (
-      id SERIAL PRIMARY KEY,
-      student_id VARCHAR(6) UNIQUE NOT NULL,
-      status TEXT NOT NULL,
-      level TEXT NOT NULL,
-      first_name TEXT,
-      last_name TEXT,
-      enrollment_date DATE,
-      state_license TEXT,
-      rapids TEXT,
-      employer TEXT,
-      phone TEXT,
-      email TEXT,
-      address TEXT,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS admins (
-      id SERIAL PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
-}
-initDb();
-
-/* ---------- AUTH ---------- */
-function requireAdmin(req, res, next) {
+/* ---------- AUTH HELPERS ---------- */
+function requireLogin(req, res, next) {
   if (!req.session.user) {
+    return res.redirect("/login");
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session.user || req.session.user.role !== "admin") {
     return res.redirect("/login");
   }
   next();
@@ -94,97 +70,62 @@ app.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
   const result = await pool.query(
-    "SELECT * FROM admins WHERE email=$1",
-    [email]
+    "SELECT * FROM users WHERE email = $1",
+    [email.toLowerCase()]
   );
 
   if (!result.rows.length) {
-    return res.render("login", { message: "Invalid login" });
+    return res.render("login", { message: "Invalid email or password" });
   }
 
-  const admin = result.rows[0];
-  const ok = bcrypt.compareSync(password, admin.password_hash);
+  const user = result.rows[0];
+  const ok = bcrypt.compareSync(password, user.password_hash);
 
   if (!ok) {
-    return res.render("login", { message: "Invalid login" });
+    return res.render("login", { message: "Invalid email or password" });
   }
 
-  req.session.user = { id: admin.id, email: admin.email };
-  res.redirect("/admin");
+  req.session.user = {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  };
+
+  if (user.role === "admin") return res.redirect("/admin");
+  if (user.role === "student") return res.redirect("/student");
+  if (user.role === "employer") return res.redirect("/employer");
+
+  res.redirect("/login");
 });
 
 app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/login"));
 });
 
-/* ---------- ADMIN ---------- */
+/* ---------- ADMIN (TEMP STUB) ---------- */
 app.get("/admin", requireAdmin, async (req, res) => {
-  const { rows } = await pool.query(
-    "SELECT * FROM students ORDER BY id ASC"
-  );
-
-  res.render("admin", {
-    user: req.session.user,
-    students: rows,
-    LEVELS,
-    STATUSES,
-    message: null
-  });
-});
-
-/* ---------- STUDENTS ---------- */
-app.post("/admin/students", requireAdmin, async (req, res) => {
-  const nextId = await pool.query(
-    "SELECT COALESCE(MAX(student_id::int), 999) + 1 AS next FROM students"
-  );
-
-  const studentId = String(nextId.rows[0].next).padStart(6, "0");
-
-  await pool.query(
-    `INSERT INTO students
-     (student_id, status, level, email, enrollment_date)
-     VALUES ($1,'Pending Enrollment','1',$2,CURRENT_DATE)`,
-    [studentId, req.body.email]
-  );
-
-  res.redirect("/admin");
-});
-
-app.post("/admin/update/:id", requireAdmin, async (req, res) => {
-  await pool.query(
-    "UPDATE students SET status=$1, level=$2 WHERE id=$3",
-    [req.body.status, req.body.level, req.params.id]
-  );
-  res.redirect("/admin");
-});
-
-app.post("/admin/delete/:id", requireAdmin, async (req, res) => {
-  await pool.query(
-    "DELETE FROM students WHERE id=$1",
-    [req.params.id]
-  );
-  res.redirect("/admin");
-});
-
-/* ---------- ONE-TIME ADMIN SETUP ---------- */
-app.get("/setup-admin", async (req, res) => {
-  const email = "admin@aei.local";
-  const password = "ChangeMeNow123!";
-  const hash = bcrypt.hashSync(password, 10);
-
-  await pool.query(
-    `INSERT INTO admins (email, password_hash)
-     VALUES ($1, $2)
-     ON CONFLICT (email) DO NOTHING`,
-    [email, hash]
-  );
-
   res.send(
-    `Admin created.<br>Email: ${email}<br>Password: ${password}`
+    "Admin logged in successfully. Admin dashboard wiring comes next."
   );
+});
+
+/* ---------- STUDENT (TEMP STUB) ---------- */
+app.get("/student", requireLogin, (req, res) => {
+  if (req.session.user.role !== "student") {
+    return res.redirect("/login");
+  }
+  res.send("Student logged in successfully.");
+});
+
+/* ---------- EMPLOYER (TEMP STUB) ---------- */
+app.get("/employer", requireLogin, (req, res) => {
+  if (req.session.user.role !== "employer") {
+    return res.redirect("/login");
+  }
+  res.send("Employer logged in successfully.");
 });
 
 /* ---------- START ---------- */
 app.listen(PORT, () => {
-  console.log("AEI portal running on port", PORT);
+  console.log(`AEI portal running on port ${PORT}`);
 });
