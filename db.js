@@ -9,7 +9,7 @@ const pool = new Pool({
 
 async function initDb() {
   /* ======================================================
-     CORE TABLES (CREATE IF MISSING)
+     CORE TABLES
      ====================================================== */
 
   await pool.query(`
@@ -25,6 +25,7 @@ async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS students (
       id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT,
       first_name TEXT NOT NULL DEFAULT '',
       last_name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
@@ -38,6 +39,7 @@ async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS employers (
       id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT,
       company_name TEXT NOT NULL DEFAULT '',
       contact_name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
@@ -46,21 +48,15 @@ async function initDb() {
   `);
 
   /* ======================================================
-     MIGRATIONS — SAFE COLUMN ADDS
+     SAFE CONSTRAINT MIGRATIONS
      ====================================================== */
 
-  /* ---- students.user_id ---- */
-  await pool.query(`
-    ALTER TABLE students
-    ADD COLUMN IF NOT EXISTS user_id BIGINT;
-  `);
-
+  /* ---- students.user_id UNIQUE ---- */
   await pool.query(`
     DO $$
     BEGIN
       IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE constraint_name = 'students_user_id_unique'
+        SELECT 1 FROM pg_constraint WHERE conname = 'students_user_id_unique'
       ) THEN
         ALTER TABLE students
         ADD CONSTRAINT students_user_id_unique UNIQUE (user_id);
@@ -69,34 +65,29 @@ async function initDb() {
     $$;
   `);
 
+  /* ---- students.user_id FK ---- */
   await pool.query(`
     DO $$
     BEGIN
       IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE constraint_name = 'students_user_id_fkey'
+        SELECT 1 FROM pg_constraint WHERE conname = 'students_user_id_fkey'
       ) THEN
         ALTER TABLE students
         ADD CONSTRAINT students_user_id_fkey
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
         ON DELETE CASCADE;
       END IF;
     END
     $$;
   `);
 
-  /* ---- employers.user_id ---- */
-  await pool.query(`
-    ALTER TABLE employers
-    ADD COLUMN IF NOT EXISTS user_id BIGINT;
-  `);
-
+  /* ---- employers.user_id UNIQUE ---- */
   await pool.query(`
     DO $$
     BEGIN
       IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE constraint_name = 'employers_user_id_unique'
+        SELECT 1 FROM pg_constraint WHERE conname = 'employers_user_id_unique'
       ) THEN
         ALTER TABLE employers
         ADD CONSTRAINT employers_user_id_unique UNIQUE (user_id);
@@ -105,16 +96,17 @@ async function initDb() {
     $$;
   `);
 
+  /* ---- employers.user_id FK ---- */
   await pool.query(`
     DO $$
     BEGIN
       IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE constraint_name = 'employers_user_id_fkey'
+        SELECT 1 FROM pg_constraint WHERE conname = 'employers_user_id_fkey'
       ) THEN
         ALTER TABLE employers
         ADD CONSTRAINT employers_user_id_fkey
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
         ON DELETE CASCADE;
       END IF;
     END
@@ -122,7 +114,7 @@ async function initDb() {
   `);
 
   /* ======================================================
-     HISTORY TABLE
+     STATUS HISTORY
      ====================================================== */
 
   await pool.query(`
