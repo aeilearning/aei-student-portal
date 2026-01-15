@@ -1,12 +1,15 @@
-// db.js
 const { Pool } = require("pg");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
 });
 
 async function initDb() {
+  // USERS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id BIGSERIAL PRIMARY KEY,
@@ -17,38 +20,41 @@ async function initDb() {
     );
   `);
 
+  // STUDENTS
+  // Includes Identity + RAPIDS fields + outcomes
   await pool.query(`
     CREATE TABLE IF NOT EXISTS students (
       id BIGSERIAL PRIMARY KEY,
       user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
 
-      -- basic profile
+      -- Identity
       first_name TEXT NOT NULL DEFAULT '',
       last_name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
       employer_name TEXT NOT NULL DEFAULT '',
 
-      -- your program tracking (simple + compliance-friendly)
+      -- Program/progress
       level INT NOT NULL DEFAULT 1 CHECK (level BETWEEN 1 AND 4),
       status TEXT NOT NULL DEFAULT 'Pending Enrollment'
         CHECK (status IN ('Pending Enrollment','Active','On Hold','Completed','Withdrawn')),
 
-      -- ETPL / reporting fields (matching your templates)
-      general_program_name TEXT NOT NULL DEFAULT '',
-      provider_general_program_id TEXT NOT NULL DEFAULT '',
+      -- RAPIDS enrollment fields (mirrors export needs)
+      program_name TEXT NOT NULL DEFAULT '',
+      provider_program_id TEXT NOT NULL DEFAULT '',
       program_system_id TEXT NOT NULL DEFAULT '',
       student_id_no TEXT NOT NULL DEFAULT '',
-      student_id_no_type TEXT NOT NULL DEFAULT 'Other',
+      student_id_type TEXT NOT NULL DEFAULT '',
 
-      -- exit reporting fields (matching Exiter template)
+      enrollment_date DATE,
       exit_date DATE,
       exit_type TEXT NOT NULL DEFAULT '',
-      credential_awarded BOOLEAN NOT NULL DEFAULT false,
+      credential TEXT NOT NULL DEFAULT '',
 
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
 
+  // EMPLOYERS
   await pool.query(`
     CREATE TABLE IF NOT EXISTS employers (
       id BIGSERIAL PRIMARY KEY,
@@ -60,6 +66,7 @@ async function initDb() {
     );
   `);
 
+  // STUDENT STATUS HISTORY (optional tracking)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_status_history (
       id BIGSERIAL PRIMARY KEY,
@@ -71,30 +78,23 @@ async function initDb() {
     );
   `);
 
-  // DOCUMENT VAULT (audit-friendly)
+  // DOCUMENT VAULT
+  // Admin uploads for students in this revision (we can open to student/employer later)
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS documents (
+    CREATE TABLE IF NOT EXISTS student_documents (
       id BIGSERIAL PRIMARY KEY,
-
-      -- ownership / linking
-      owner_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      student_id BIGINT REFERENCES students(id) ON DELETE CASCADE,
-      employer_id BIGINT REFERENCES employers(id) ON DELETE CASCADE,
-
-      -- audit trail
+      student_id BIGINT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
       uploaded_by_user_id BIGINT REFERENCES users(id),
-      uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-      -- metadata
-      doc_type TEXT NOT NULL DEFAULT 'Other',
+      doc_type TEXT NOT NULL,
       title TEXT NOT NULL DEFAULT '',
-      notes TEXT NOT NULL DEFAULT '',
 
       original_filename TEXT NOT NULL,
       stored_filename TEXT NOT NULL,
-      storage_path TEXT NOT NULL,
       mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
-      size_bytes BIGINT NOT NULL DEFAULT 0
+      file_size_bytes BIGINT NOT NULL DEFAULT 0,
+
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
 
@@ -103,7 +103,9 @@ async function initDb() {
   const adminPassword = (process.env.ADMIN_PASSWORD || "").trim();
 
   if (adminEmail && adminPassword) {
-    const existing = await pool.query("SELECT id FROM users WHERE email=$1", [adminEmail]);
+    const existing = await pool.query("SELECT id FROM users WHERE email=$1", [
+      adminEmail,
+    ]);
     if (existing.rows.length === 0) {
       const bcrypt = require("bcryptjs");
       const hash = bcrypt.hashSync(adminPassword, 10);
