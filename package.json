@@ -1,21 +1,19 @@
 {
   "name": "aei-student-portal",
   "version": "1.0.0",
-  "description": "AEI Learning Student & Employer Portal (Admin + Student + Employer + Compliance Docs Vault)",
+  "description": "AEI Learning Apprenticeship Portal",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
+  "type": "commonjs",
   "engines": {
-    "node": ">=18"
+    "node": "18.x"
+  },
+  "scripts": {
+    "start": "node server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "ejs": "^3.1.10",
     "express": "^4.19.2",
     "express-session": "^1.17.3",
-    "multer": "^1.4.5-lts.1",
-    "pg": "^8.12.0"
+    "pg": "^8.11.5"
   }
 }
