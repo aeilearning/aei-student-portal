@@ -2,56 +2,48 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>AEI - Account Request</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Request Access</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body class="container">
-  <div class="topbar">
-    <div>
-      <h1>Request an Account</h1>
-      <div class="muted">Submit your info and AEI will follow up.</div>
-    </div>
-    <a class="link" href="/login">Back to Login</a>
-  </div>
-
-  <% if (message) { %>
-    <div class="alert"><%= message %></div>
-  <% } %>
 
   <div class="card">
-    <form method="POST" action="/register" class="grid2">
+    <div class="header">
+      <h1>Request Access</h1>
+      <p class="muted">Submit a request and AEI will contact you if approved.</p>
+    </div>
+
+    <% if (message) { %>
+      <div class="alert"><%= message %></div>
+    <% } %>
+
+    <form method="POST" action="/register" class="stack">
       <div class="stack">
         <label>Email</label>
         <input name="email" type="email" required />
       </div>
 
       <div class="stack">
-        <label>Are you a Student or Employer?</label>
-        <select name="type" required>
+        <label>Role</label>
+        <select name="role" required>
+          <option value="">Select…</option>
           <option value="student">Student</option>
           <option value="employer">Employer</option>
         </select>
       </div>
 
       <div class="stack">
-        <label>Name</label>
-        <input name="name" placeholder="Full name" />
+        <label>Message (optional)</label>
+        <textarea name="note" rows="4" placeholder="Any details AEI should know…"></textarea>
       </div>
 
-      <div class="stack">
-        <label>Phone</label>
-        <input name="phone" placeholder="Optional" />
-      </div>
-
-      <div class="stack" style="grid-column: 1 / -1;">
-        <label>Notes</label>
-        <input name="notes" placeholder="Optional message to AEI" />
-      </div>
-
-      <div>
-        <button>Submit Request</button>
-      </div>
+      <button class="btn" type="submit">Submit Request</button>
     </form>
+
+    <div class="divider"></div>
+    <a class="link" href="/login">Back to login</a>
   </div>
+
 </body>
 </html>
