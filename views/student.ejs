@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>AEI Student Portal</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -10,16 +11,11 @@
   <div class="topbar">
     <div>
       <h1>Student Portal</h1>
-      <div class="muted">
-        Signed in as <b><%= user.email %></b>
-      </div>
+      <div class="muted">Signed in as <b><%= user.email %></b></div>
     </div>
     <a class="link" href="/logout">Logout</a>
   </div>
 
-  <!-- ===================================================== -->
-  <!-- STATUS SUMMARY -->
-  <!-- ===================================================== -->
   <div class="card">
     <h2>Your Status</h2>
 
@@ -36,15 +32,12 @@
     </div>
   </div>
 
-  <!-- ===================================================== -->
-  <!-- PERSONAL INFORMATION -->
-  <!-- ===================================================== -->
   <div class="card">
     <h2>Your Information</h2>
 
     <form method="POST" action="/student/update" class="grid2">
       <div class="stack">
-        <label>Email (read only)</label>
+        <label>Email (read-only)</label>
         <input value="<%= user.email %>" disabled />
       </div>
 
@@ -65,27 +58,20 @@
 
       <div class="stack">
         <label>Employer</label>
-        <input
-          name="employer_name"
-          value="<%= student.employer_name || '' %>"
-          placeholder="Company name"
-        />
+        <input name="employer_name" value="<%= student.employer_name || '' %>" placeholder="Company name" />
       </div>
 
       <div>
-        <button>Save Changes</button>
+        <button class="btn">Save Changes</button>
       </div>
     </form>
   </div>
 
-  <!-- ===================================================== -->
-  <!-- NOTES -->
-  <!-- ===================================================== -->
   <div class="card">
-    <h2>Important Notes</h2>
+    <h2>Notes</h2>
     <ul class="small muted">
-      <li>Your level and status are managed by AEI administration.</li>
-      <li>If anything looks incorrect, contact AEI directly.</li>
+      <li>Level and status are managed by AEI administration.</li>
+      <li>If something looks wrong, contact AEI support.</li>
       <li>This portal is for administrative coordination only.</li>
     </ul>
   </div>
