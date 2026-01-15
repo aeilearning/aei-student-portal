@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>AEI Admin Dashboard</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -19,163 +20,195 @@
     <div class="alert"><%= message %></div>
   <% } %>
 
-  <!-- ===================================================== -->
   <!-- CREATE STUDENT -->
-  <!-- ===================================================== -->
   <div class="card">
-    <h2>Create Student</h2>
+    <div class="card-title">
+      <h2>Create Student</h2>
+      <p class="muted small">Creates a student login and a linked student profile.</p>
+    </div>
+
     <form method="POST" action="/admin/students/create" class="grid2">
       <div class="stack">
         <label>Student Email</label>
         <input name="email" type="email" required />
       </div>
+
       <div class="stack">
         <label>Temp Password (optional)</label>
         <input name="temp_password" placeholder="Auto-generated if blank" />
       </div>
+
       <div>
-        <button>Create Student</button>
+        <button class="btn">Create Student</button>
       </div>
     </form>
   </div>
 
-  <!-- ===================================================== -->
   <!-- STUDENTS -->
-  <!-- ===================================================== -->
   <div class="card">
-    <h2>Students</h2>
+    <div class="card-title">
+      <h2>Students</h2>
+      <p class="muted small">Edit fields and hit Save. Delete is permanent.</p>
+    </div>
 
-    <table>
-      <tr>
-        <th>Email</th>
-        <th>Name</th>
-        <th>Phone</th>
-        <th>Employer</th>
-        <th>Level</th>
-        <th>Status</th>
-        <th>Save</th>
-        <th>Delete</th>
-      </tr>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Employer</th>
+            <th>Level</th>
+            <th>Status</th>
+            <th class="tight">Save</th>
+            <th class="tight">Delete</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% students.forEach(s => { %>
+            <tr>
+              <td class="mono"><%= s.email %></td>
 
-      <% students.forEach(s => { %>
-        <tr>
-          <form method="POST" action="/admin/students/<%= s.id %>/update">
-            <td><%= s.email %></td>
+              <!-- UPDATE FORM (only wraps the editable cells + save button) -->
+              <td colspan="5">
+                <form method="POST" action="/admin/students/<%= s.id %>/update" class="row-form">
+                  <div class="row-grid">
+                    <div class="row-col">
+                      <div class="two">
+                        <input name="first_name" value="<%= s.first_name || '' %>" placeholder="First" />
+                        <input name="last_name" value="<%= s.last_name || '' %>" placeholder="Last" />
+                      </div>
+                    </div>
 
-            <td>
-              <input name="first_name" value="<%= s.first_name || '' %>" placeholder="First" />
-              <input name="last_name" value="<%= s.last_name || '' %>" placeholder="Last" />
-            </td>
+                    <div class="row-col">
+                      <input name="phone" value="<%= s.phone || '' %>" placeholder="Phone" />
+                    </div>
 
-            <td>
-              <input name="phone" value="<%= s.phone || '' %>" />
-            </td>
+                    <div class="row-col">
+                      <input name="employer_name" value="<%= s.employer_name || '' %>" placeholder="Employer" />
+                    </div>
 
-            <td>
-              <input name="employer_name" value="<%= s.employer_name || '' %>" />
-            </td>
+                    <div class="row-col">
+                      <select name="level">
+                        <% LEVELS.forEach(l => { %>
+                          <option value="<%= l %>" <%= Number(s.level) === l ? 'selected' : '' %>>
+                            <%= l %>
+                          </option>
+                        <% }) %>
+                      </select>
+                    </div>
 
-            <td>
-              <select name="level">
-                <% LEVELS.forEach(l => { %>
-                  <option value="<%= l %>" <%= Number(s.level) === l ? 'selected' : '' %>>
-                    <%= l %>
-                  </option>
-                <% }) %>
-              </select>
-            </td>
+                    <div class="row-col">
+                      <select name="status">
+                        <% STUDENT_STATUSES.forEach(st => { %>
+                          <option value="<%= st %>" <%= s.status === st ? 'selected' : '' %>>
+                            <%= st %>
+                          </option>
+                        <% }) %>
+                      </select>
+                    </div>
 
-            <td>
-              <select name="status">
-                <% STUDENT_STATUSES.forEach(st => { %>
-                  <option value="<%= st %>" <%= s.status === st ? 'selected' : '' %>>
-                    <%= st %>
-                  </option>
-                <% }) %>
-              </select>
-            </td>
+                    <div class="row-col tight">
+                      <button class="btn small">Save</button>
+                    </div>
+                  </div>
+                </form>
+              </td>
 
-            <td>
-              <button>Save</button>
-            </td>
-          </form>
-
-          <td>
-            <form method="POST" action="/admin/students/<%= s.id %>/delete">
-              <button onclick="return confirm('Delete this student?')">X</button>
-            </form>
-          </td>
-        </tr>
-      <% }) %>
-    </table>
+              <!-- DELETE FORM -->
+              <td class="tight">
+                <form method="POST" action="/admin/students/<%= s.id %>/delete">
+                  <button class="btn danger small" onclick="return confirm('Delete this student? This cannot be undone.')">X</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <!-- ===================================================== -->
   <!-- CREATE EMPLOYER -->
-  <!-- ===================================================== -->
   <div class="card">
-    <h2>Create Employer</h2>
+    <div class="card-title">
+      <h2>Create Employer</h2>
+      <p class="muted small">Creates an employer login and a linked employer profile.</p>
+    </div>
+
     <form method="POST" action="/admin/employers/create" class="grid2">
       <div class="stack">
         <label>Employer Email</label>
         <input name="email" type="email" required />
       </div>
+
       <div class="stack">
         <label>Temp Password (optional)</label>
         <input name="temp_password" placeholder="Auto-generated if blank" />
       </div>
+
       <div>
-        <button>Create Employer</button>
+        <button class="btn">Create Employer</button>
       </div>
     </form>
   </div>
 
-  <!-- ===================================================== -->
   <!-- EMPLOYERS -->
-  <!-- ===================================================== -->
   <div class="card">
-    <h2>Employers</h2>
+    <div class="card-title">
+      <h2>Employers</h2>
+      <p class="muted small">Edit fields and hit Save. Delete is permanent.</p>
+    </div>
 
-    <table>
-      <tr>
-        <th>Email</th>
-        <th>Company</th>
-        <th>Contact</th>
-        <th>Phone</th>
-        <th>Save</th>
-        <th>Delete</th>
-      </tr>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Company</th>
+            <th>Contact</th>
+            <th>Phone</th>
+            <th class="tight">Save</th>
+            <th class="tight">Delete</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% employers.forEach(e => { %>
+            <tr>
+              <td class="mono"><%= e.email %></td>
 
-      <% employers.forEach(e => { %>
-        <tr>
-          <form method="POST" action="/admin/employers/<%= e.id %>/update">
-            <td><%= e.email %></td>
+              <td colspan="4">
+                <form method="POST" action="/admin/employers/<%= e.id %>/update" class="row-form">
+                  <div class="row-grid employers">
+                    <div class="row-col">
+                      <input name="company_name" value="<%= e.company_name || '' %>" placeholder="Company name" />
+                    </div>
 
-            <td>
-              <input name="company_name" value="<%= e.company_name || '' %>" />
-            </td>
+                    <div class="row-col">
+                      <input name="contact_name" value="<%= e.contact_name || '' %>" placeholder="Primary contact" />
+                    </div>
 
-            <td>
-              <input name="contact_name" value="<%= e.contact_name || '' %>" />
-            </td>
+                    <div class="row-col">
+                      <input name="phone" value="<%= e.phone || '' %>" placeholder="Phone" />
+                    </div>
 
-            <td>
-              <input name="phone" value="<%= e.phone || '' %>" />
-            </td>
+                    <div class="row-col tight">
+                      <button class="btn small">Save</button>
+                    </div>
+                  </div>
+                </form>
+              </td>
 
-            <td>
-              <button>Save</button>
-            </td>
-          </form>
-
-          <td>
-            <form method="POST" action="/admin/employers/<%= e.id %>/delete">
-              <button onclick="return confirm('Delete this employer?')">X</button>
-            </form>
-          </td>
-        </tr>
-      <% }) %>
-    </table>
+              <td class="tight">
+                <form method="POST" action="/admin/employers/<%= e.id %>/delete">
+                  <button class="btn danger small" onclick="return confirm('Delete this employer? This cannot be undone.')">X</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
   </div>
 
 </body>
