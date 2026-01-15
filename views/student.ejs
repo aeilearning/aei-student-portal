@@ -2,19 +2,15 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>AEI Student Detail</title>
+  <title>AEI Student Portal</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body class="container">
 
   <div class="topbar">
     <div>
-      <h1>Student Detail</h1>
-      <div class="muted">
-        <a class="link" href="/admin">← Back to Admin</a>
-        &nbsp; • &nbsp;
-        Logged in as <b><%= user.email %></b>
-      </div>
+      <h1>Student Portal</h1>
+      <div class="muted">Signed in as <b><%= user.email %></b></div>
     </div>
     <a class="link" href="/logout">Logout</a>
   </div>
@@ -24,155 +20,62 @@
   <% } %>
 
   <div class="card">
-    <div class="row-between">
+    <h2>Your Status</h2>
+    <div class="grid2">
       <div>
-        <h2><%= student.email %></h2>
-        <div class="muted">
-          <b><%= (student.first_name || '') %> <%= (student.last_name || '') %></b>
-          • Level <%= student.level %>
-          • <%= student.status %>
-        </div>
+        <div class="muted small">Current Status</div>
+        <div class="pill"><%= student.status %></div>
       </div>
-
-      <div class="right">
-        <div class="muted small">RAPIDS Readiness</div>
-        <div class="pill <%= readiness.code %>"><%= readiness.label %></div>
+      <div>
+        <div class="muted small">Current Level</div>
+        <div class="pill">Level <%= student.level %></div>
       </div>
     </div>
-
-    <% if (readiness.missing && readiness.missing.length) { %>
-      <div class="note warning">
-        <b>Missing for RAPIDS readiness:</b>
-        <ul class="small">
-          <% readiness.missing.forEach(m => { %>
-            <li><%= m %></li>
-          <% }) %>
-        </ul>
-      </div>
-    <% } %>
   </div>
 
-  <!-- ===================== IDENTITY / PROGRESS ===================== -->
   <div class="card">
-    <h2>Identity & Progress</h2>
+    <h2>Your Information</h2>
 
-    <form method="POST" action="/admin/students/<%= student.id %>/update-identity" class="grid2">
+    <form method="POST" action="/student/update" class="grid2">
+      <div class="stack">
+        <label>Email (read only)</label>
+        <input value="<%= user.email %>" disabled />
+      </div>
+
       <div class="stack">
         <label>First Name</label>
-        <input name="first_name" value="<%= student.first_name || '' %>" />
+        <input name="first_name" value="<%= student.first_name || '' %>" disabled />
       </div>
 
       <div class="stack">
         <label>Last Name</label>
-        <input name="last_name" value="<%= student.last_name || '' %>" />
+        <input name="last_name" value="<%= student.last_name || '' %>" disabled />
       </div>
 
       <div class="stack">
         <label>Phone</label>
-        <input name="phone" value="<%= student.phone || '' %>" />
+        <input name="phone" value="<%= student.phone || '' %>" disabled />
       </div>
 
       <div class="stack">
-        <label>Employer Name</label>
-        <input name="employer_name" value="<%= student.employer_name || '' %>" />
+        <label>Employer</label>
+        <input name="employer_name" value="<%= student.employer_name || '' %>" disabled />
       </div>
 
-      <div class="stack">
-        <label>Level</label>
-        <select name="level">
-          <% LEVELS.forEach(l => { %>
-            <option value="<%= l %>" <%= Number(student.level) === l ? 'selected' : '' %>><%= l %></option>
-          <% }) %>
-        </select>
-      </div>
-
-      <div class="stack">
-        <label>Status</label>
-        <select name="status">
-          <% STUDENT_STATUSES.forEach(st => { %>
-            <option value="<%= st %>" <%= student.status === st ? 'selected' : '' %>><%= st %></option>
-          <% }) %>
-        </select>
-      </div>
-
-      <div>
-        <button>Save Identity / Progress</button>
+      <div class="muted small">
+        Profile edits are managed by AEI administration for compliance.
       </div>
     </form>
   </div>
 
-  <!-- ===================== RAPIDS ===================== -->
-  <div class="card">
-    <h2>RAPIDS Enrollment & Outcomes</h2>
-    <div class="muted small">
-      This section is compliance-facing. Keep it accurate and complete for exports and audits.
-    </div>
-
-    <form method="POST" action="/admin/students/<%= student.id %>/update-rapids" class="grid2">
-      <div class="stack">
-        <label>Program Name</label>
-        <input name="program_name" value="<%= student.program_name || '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Provider Program ID</label>
-        <input name="provider_program_id" value="<%= student.provider_program_id || '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Program System ID</label>
-        <input name="program_system_id" value="<%= student.program_system_id || '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Student ID No.</label>
-        <input name="student_id_no" value="<%= student.student_id_no || '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Student ID Type</label>
-        <select name="student_id_type">
-          <% STUDENT_ID_TYPES.forEach(t => { %>
-            <option value="<%= t %>" <%= (student.student_id_type || '') === t ? 'selected' : '' %>><%= t %></option>
-          <% }) %>
-        </select>
-      </div>
-
-      <div class="stack">
-        <label>Enrollment Date</label>
-        <input name="enrollment_date" type="date" value="<%= student.enrollment_date ? student.enrollment_date.toISOString().slice(0,10) : '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Exit Date</label>
-        <input name="exit_date" type="date" value="<%= student.exit_date ? student.exit_date.toISOString().slice(0,10) : '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Exit Type</label>
-        <input name="exit_type" value="<%= student.exit_type || '' %>" placeholder="e.g. Completed, Cancelled, etc." />
-      </div>
-
-      <div class="stack">
-        <label>Credential</label>
-        <input name="credential" value="<%= student.credential || '' %>" placeholder="e.g. Certificate earned" />
-      </div>
-
-      <div>
-        <button>Save RAPIDS Fields</button>
-      </div>
-    </form>
-  </div>
-
-  <!-- ===================== DOC VAULT ===================== -->
   <div class="card">
     <h2>Document Vault</h2>
-    <div class="muted small">
-      Store critical documents here so students and employers don’t lose paperwork during licensing and audit cycles.
-      (Admin upload in this revision — we can open uploads to student/employer next.)
-    </div>
+    <p class="muted small">
+      Store important documents here so you never lose them (IDs, apprentice cards, journeyman certificates,
+      affidavits, transcripts, completion certificates, etc.). This helps with compliance and audits.
+    </p>
 
-    <form method="POST" action="/admin/students/<%= student.id %>/docs/upload" enctype="multipart/form-data" class="grid2">
+    <form method="POST" action="/student/documents/upload" enctype="multipart/form-data" class="grid2">
       <div class="stack">
         <label>Document Type</label>
         <select name="doc_type">
@@ -183,13 +86,18 @@
       </div>
 
       <div class="stack">
-        <label>Document Title (optional)</label>
-        <input name="title" placeholder="e.g. CO Apprentice Card - 2026" />
+        <label>Title (optional)</label>
+        <input name="title" placeholder="Example: 2026 Apprentice Card" />
+      </div>
+
+      <div class="stack">
+        <label>Notes (optional)</label>
+        <input name="notes" placeholder="Anything helpful for audits" />
       </div>
 
       <div class="stack">
         <label>File</label>
-        <input type="file" name="doc_file" required />
+        <input type="file" name="file" required />
       </div>
 
       <div>
@@ -199,28 +107,30 @@
 
     <hr />
 
-    <h3>Stored Documents (<%= docs.length %>)</h3>
-
-    <% if (!docs.length) { %>
-      <div class="muted">No documents uploaded yet.</div>
+    <h3>Stored Documents</h3>
+    <% if (!documents || !documents.length) { %>
+      <div class="muted small">No documents uploaded yet.</div>
     <% } else { %>
       <table>
         <tr>
           <th>Type</th>
           <th>Title</th>
+          <th>File</th>
           <th>Uploaded</th>
-          <th>By</th>
           <th>Download</th>
+          <th>Delete</th>
         </tr>
-
-        <% docs.forEach(d => { %>
+        <% documents.forEach(d => { %>
           <tr>
             <td><%= d.doc_type %></td>
-            <td><%= d.title || d.original_filename %></td>
-            <td><%= new Date(d.created_at).toLocaleString() %></td>
-            <td><%= d.uploader_email || 'Unknown' %></td>
+            <td><%= d.title || '' %></td>
+            <td class="small"><%= d.original_filename %></td>
+            <td class="small"><%= new Date(d.uploaded_at).toLocaleString() %></td>
+            <td><a class="link" href="/documents/<%= d.id %>/download">Download</a></td>
             <td>
-              <a class="btn" href="/admin/docs/<%= d.id %>/download">Download</a>
+              <form method="POST" action="/documents/<%= d.id %>/delete">
+                <button onclick="return confirm('Delete this document?')">X</button>
+              </form>
             </td>
           </tr>
         <% }) %>
