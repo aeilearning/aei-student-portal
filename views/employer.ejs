@@ -2,7 +2,6 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>AEI Employer Portal</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -16,44 +15,106 @@
     <a class="link" href="/logout">Logout</a>
   </div>
 
+  <% if (message) { %>
+    <div class="alert"><%= message %></div>
+  <% } %>
+
   <div class="card">
     <h2>Account Information</h2>
-
     <form method="POST" action="/employer/update" class="grid2">
       <div class="stack">
-        <label>Email (read-only)</label>
+        <label>Email (read only)</label>
         <input value="<%= user.email %>" disabled />
       </div>
 
       <div class="stack">
         <label>Company Name</label>
-        <input name="company_name" value="<%= employer.company_name || '' %>" placeholder="Company name" />
+        <input value="<%= employer.company_name || '' %>" disabled />
       </div>
 
       <div class="stack">
         <label>Primary Contact</label>
-        <input name="contact_name" value="<%= employer.contact_name || '' %>" placeholder="Contact person" />
+        <input value="<%= employer.contact_name || '' %>" disabled />
       </div>
 
       <div class="stack">
         <label>Phone</label>
-        <input name="phone" value="<%= employer.phone || '' %>" placeholder="Phone number" />
+        <input value="<%= employer.phone || '' %>" disabled />
       </div>
 
-      <div>
-        <button class="btn">Save Changes</button>
+      <div class="muted small">
+        Employer profile edits are managed by AEI administration for compliance.
       </div>
     </form>
   </div>
 
   <div class="card">
-    <h2>Coming Next</h2>
-    <ul class="small muted">
-      <li>View apprentices associated with your company</li>
-      <li>Verify employment information</li>
-      <li>Upload forms and documentation</li>
-      <li>Administrative coordination with AEI</li>
-    </ul>
+    <h2>Employer Document Vault</h2>
+    <p class="muted small">
+      Store company documents here (agreements, forms, audit correspondence, etc.).
+    </p>
+
+    <form method="POST" action="/employer/documents/upload" enctype="multipart/form-data" class="grid2">
+      <div class="stack">
+        <label>Document Type</label>
+        <select name="doc_type">
+          <% DOC_TYPES.forEach(dt => { %>
+            <option value="<%= dt %>"><%= dt %></option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Title (optional)</label>
+        <input name="title" placeholder="Example: Training Agreement 2026" />
+      </div>
+
+      <div class="stack">
+        <label>Notes (optional)</label>
+        <input name="notes" placeholder="Anything helpful for audits" />
+      </div>
+
+      <div class="stack">
+        <label>File</label>
+        <input type="file" name="file" required />
+      </div>
+
+      <div>
+        <button>Upload Document</button>
+      </div>
+    </form>
+
+    <hr />
+
+    <h3>Stored Documents</h3>
+    <% if (!documents || !documents.length) { %>
+      <div class="muted small">No documents uploaded yet.</div>
+    <% } else { %>
+      <table>
+        <tr>
+          <th>Type</th>
+          <th>Title</th>
+          <th>File</th>
+          <th>Uploaded</th>
+          <th>Download</th>
+          <th>Delete</th>
+        </tr>
+        <% documents.forEach(d => { %>
+          <tr>
+            <td><%= d.doc_type %></td>
+            <td><%= d.title || '' %></td>
+            <td class="small"><%= d.original_filename %></td>
+            <td class="small"><%= new Date(d.uploaded_at).toLocaleString() %></td>
+            <td><a class="link" href="/documents/<%= d.id %>/download">Download</a></td>
+            <td>
+              <form method="POST" action="/documents/<%= d.id %>/delete">
+                <button onclick="return confirm('Delete this document?')">X</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </table>
+    <% } %>
   </div>
 
 </body>
