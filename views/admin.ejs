@@ -2,7 +2,6 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>AEI Admin Dashboard</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -12,6 +11,11 @@
     <div>
       <h1>Admin Dashboard</h1>
       <div class="muted">Logged in as <b><%= user.email %></b></div>
+      <div class="muted small">
+        Exports:
+        <a class="link" href="/admin/export/enrollees.csv">Enrollees CSV</a> ·
+        <a class="link" href="/admin/export/exiters.csv">Exiters CSV</a>
+      </div>
     </div>
     <a class="link" href="/logout">Logout</a>
   </div>
@@ -20,195 +24,177 @@
     <div class="alert"><%= message %></div>
   <% } %>
 
-  <!-- CREATE STUDENT -->
   <div class="card">
-    <div class="card-title">
-      <h2>Create Student</h2>
-      <p class="muted small">Creates a student login and a linked student profile.</p>
-    </div>
-
+    <h2>Create Student</h2>
     <form method="POST" action="/admin/students/create" class="grid2">
       <div class="stack">
         <label>Student Email</label>
         <input name="email" type="email" required />
       </div>
-
       <div class="stack">
         <label>Temp Password (optional)</label>
         <input name="temp_password" placeholder="Auto-generated if blank" />
       </div>
-
       <div>
-        <button class="btn">Create Student</button>
+        <button>Create Student</button>
       </div>
     </form>
   </div>
 
-  <!-- STUDENTS -->
   <div class="card">
-    <div class="card-title">
-      <h2>Students</h2>
-      <p class="muted small">Edit fields and hit Save. Delete is permanent.</p>
-    </div>
+    <h2>Students</h2>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Name</th>
-            <th>Phone</th>
-            <th>Employer</th>
-            <th>Level</th>
-            <th>Status</th>
-            <th class="tight">Save</th>
-            <th class="tight">Delete</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% students.forEach(s => { %>
-            <tr>
-              <td class="mono"><%= s.email %></td>
+    <table>
+      <tr>
+        <th>Email</th>
+        <th>Name</th>
+        <th>Phone</th>
+        <th>Employer</th>
+        <th>Level</th>
+        <th>Status</th>
 
-              <!-- UPDATE FORM (only wraps the editable cells + save button) -->
-              <td colspan="5">
-                <form method="POST" action="/admin/students/<%= s.id %>/update" class="row-form">
-                  <div class="row-grid">
-                    <div class="row-col">
-                      <div class="two">
-                        <input name="first_name" value="<%= s.first_name || '' %>" placeholder="First" />
-                        <input name="last_name" value="<%= s.last_name || '' %>" placeholder="Last" />
-                      </div>
-                    </div>
+        <th>Program Name</th>
+        <th>Provider Program ID</th>
+        <th>Program_System ID</th>
+        <th>Student ID No.</th>
+        <th>ID Type</th>
 
-                    <div class="row-col">
-                      <input name="phone" value="<%= s.phone || '' %>" placeholder="Phone" />
-                    </div>
+        <th>Exit Date</th>
+        <th>Exit Type</th>
+        <th>Credential</th>
 
-                    <div class="row-col">
-                      <input name="employer_name" value="<%= s.employer_name || '' %>" placeholder="Employer" />
-                    </div>
+        <th>Docs</th>
+        <th>Save</th>
+        <th>Delete</th>
+      </tr>
 
-                    <div class="row-col">
-                      <select name="level">
-                        <% LEVELS.forEach(l => { %>
-                          <option value="<%= l %>" <%= Number(s.level) === l ? 'selected' : '' %>>
-                            <%= l %>
-                          </option>
-                        <% }) %>
-                      </select>
-                    </div>
+      <% students.forEach(s => { %>
+        <tr>
+          <form method="POST" action="/admin/students/<%= s.id %>/update">
+            <td><%= s.email %></td>
 
-                    <div class="row-col">
-                      <select name="status">
-                        <% STUDENT_STATUSES.forEach(st => { %>
-                          <option value="<%= st %>" <%= s.status === st ? 'selected' : '' %>>
-                            <%= st %>
-                          </option>
-                        <% }) %>
-                      </select>
-                    </div>
+            <td>
+              <input name="first_name" value="<%= s.first_name || '' %>" placeholder="First" />
+              <input name="last_name" value="<%= s.last_name || '' %>" placeholder="Last" />
+            </td>
 
-                    <div class="row-col tight">
-                      <button class="btn small">Save</button>
-                    </div>
-                  </div>
-                </form>
-              </td>
+            <td><input name="phone" value="<%= s.phone || '' %>" /></td>
 
-              <!-- DELETE FORM -->
-              <td class="tight">
-                <form method="POST" action="/admin/students/<%= s.id %>/delete">
-                  <button class="btn danger small" onclick="return confirm('Delete this student? This cannot be undone.')">X</button>
-                </form>
-              </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    </div>
+            <td><input name="employer_name" value="<%= s.employer_name || '' %>" /></td>
+
+            <td>
+              <select name="level">
+                <% LEVELS.forEach(l => { %>
+                  <option value="<%= l %>" <%= Number(s.level) === l ? 'selected' : '' %>><%= l %></option>
+                <% }) %>
+              </select>
+            </td>
+
+            <td>
+              <select name="status">
+                <% STUDENT_STATUSES.forEach(st => { %>
+                  <option value="<%= st %>" <%= s.status === st ? 'selected' : '' %>><%= st %></option>
+                <% }) %>
+              </select>
+            </td>
+
+            <td><input name="general_program_name" value="<%= s.general_program_name || '' %>" /></td>
+            <td><input name="provider_general_program_id" value="<%= s.provider_general_program_id || '' %>" /></td>
+            <td><input name="program_system_id" value="<%= s.program_system_id || '' %>" /></td>
+            <td><input name="student_id_no" value="<%= s.student_id_no || '' %>" /></td>
+            <td><input name="student_id_no_type" value="<%= s.student_id_no_type || 'Other' %>" /></td>
+
+            <td><input name="exit_date" type="date" value="<%= s.exit_date ? String(s.exit_date).slice(0,10) : '' %>" /></td>
+            <td><input name="exit_type" value="<%= s.exit_type || '' %>" /></td>
+            <td>
+              <select name="credential_awarded">
+                <option value="false" <%= s.credential_awarded ? '' : 'selected' %>>No</option>
+                <option value="true" <%= s.credential_awarded ? 'selected' : '' %>>Yes</option>
+              </select>
+            </td>
+
+            <td>
+              <div class="stack">
+                <select name="doc_type">
+                  <% DOC_TYPES.forEach(dt => { %>
+                    <option value="<%= dt %>"><%= dt %></option>
+                  <% }) %>
+                </select>
+                <input name="title" placeholder="Doc title (optional)" form="docform-<%= s.id %>" />
+              </div>
+
+              <form id="docform-<%= s.id %>" method="POST" action="/admin/students/<%= s.id %>/documents/upload" enctype="multipart/form-data" class="stack">
+                <input type="hidden" name="doc_type" value="Other" />
+                <input type="file" name="file" required />
+                <button type="submit">Upload</button>
+              </form>
+
+              <div class="muted small">
+                Tip: upload transcripts + certificates here for audit-proof storage.
+              </div>
+            </td>
+
+            <td><button>Save</button></td>
+          </form>
+
+          <td>
+            <form method="POST" action="/admin/students/<%= s.id %>/delete">
+              <button onclick="return confirm('Delete this student?')">X</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </table>
   </div>
 
-  <!-- CREATE EMPLOYER -->
   <div class="card">
-    <div class="card-title">
-      <h2>Create Employer</h2>
-      <p class="muted small">Creates an employer login and a linked employer profile.</p>
-    </div>
-
+    <h2>Create Employer</h2>
     <form method="POST" action="/admin/employers/create" class="grid2">
       <div class="stack">
         <label>Employer Email</label>
         <input name="email" type="email" required />
       </div>
-
       <div class="stack">
         <label>Temp Password (optional)</label>
         <input name="temp_password" placeholder="Auto-generated if blank" />
       </div>
-
       <div>
-        <button class="btn">Create Employer</button>
+        <button>Create Employer</button>
       </div>
     </form>
   </div>
 
-  <!-- EMPLOYERS -->
   <div class="card">
-    <div class="card-title">
-      <h2>Employers</h2>
-      <p class="muted small">Edit fields and hit Save. Delete is permanent.</p>
-    </div>
+    <h2>Employers</h2>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Company</th>
-            <th>Contact</th>
-            <th>Phone</th>
-            <th class="tight">Save</th>
-            <th class="tight">Delete</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% employers.forEach(e => { %>
-            <tr>
-              <td class="mono"><%= e.email %></td>
+    <table>
+      <tr>
+        <th>Email</th>
+        <th>Company</th>
+        <th>Contact</th>
+        <th>Phone</th>
+        <th>Save</th>
+        <th>Delete</th>
+      </tr>
 
-              <td colspan="4">
-                <form method="POST" action="/admin/employers/<%= e.id %>/update" class="row-form">
-                  <div class="row-grid employers">
-                    <div class="row-col">
-                      <input name="company_name" value="<%= e.company_name || '' %>" placeholder="Company name" />
-                    </div>
+      <% employers.forEach(e => { %>
+        <tr>
+          <form method="POST" action="/admin/employers/<%= e.id %>/update">
+            <td><%= e.email %></td>
+            <td><input name="company_name" value="<%= e.company_name || '' %>" /></td>
+            <td><input name="contact_name" value="<%= e.contact_name || '' %>" /></td>
+            <td><input name="phone" value="<%= e.phone || '' %>" /></td>
+            <td><button>Save</button></td>
+          </form>
 
-                    <div class="row-col">
-                      <input name="contact_name" value="<%= e.contact_name || '' %>" placeholder="Primary contact" />
-                    </div>
-
-                    <div class="row-col">
-                      <input name="phone" value="<%= e.phone || '' %>" placeholder="Phone" />
-                    </div>
-
-                    <div class="row-col tight">
-                      <button class="btn small">Save</button>
-                    </div>
-                  </div>
-                </form>
-              </td>
-
-              <td class="tight">
-                <form method="POST" action="/admin/employers/<%= e.id %>/delete">
-                  <button class="btn danger small" onclick="return confirm('Delete this employer? This cannot be undone.')">X</button>
-                </form>
-              </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    </div>
+          <td>
+            <form method="POST" action="/admin/employers/<%= e.id %>/delete">
+              <button onclick="return confirm('Delete this employer?')">X</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </table>
   </div>
 
 </body>
