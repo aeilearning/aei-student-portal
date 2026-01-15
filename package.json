@@ -1,7 +1,7 @@
 {
   "name": "aei-student-portal",
   "version": "1.0.0",
-  "private": true,
+  "description": "AEI Learning Student, Employer, and Admin Compliance Portal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
