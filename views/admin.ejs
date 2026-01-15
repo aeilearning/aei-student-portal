@@ -11,11 +11,6 @@
     <div>
       <h1>Admin Dashboard</h1>
       <div class="muted">Logged in as <b><%= user.email %></b></div>
-      <div class="muted small">
-        Exports:
-        <a class="link" href="/admin/export/enrollees.csv">Enrollees CSV</a> ·
-        <a class="link" href="/admin/export/exiters.csv">Exiters CSV</a>
-      </div>
     </div>
     <a class="link" href="/logout">Logout</a>
   </div>
@@ -48,98 +43,32 @@
       <tr>
         <th>Email</th>
         <th>Name</th>
-        <th>Phone</th>
         <th>Employer</th>
         <th>Level</th>
         <th>Status</th>
-
-        <th>Program Name</th>
-        <th>Provider Program ID</th>
-        <th>Program_System ID</th>
-        <th>Student ID No.</th>
-        <th>ID Type</th>
-
-        <th>Exit Date</th>
-        <th>Exit Type</th>
-        <th>Credential</th>
-
+        <th>RAPIDS</th>
         <th>Docs</th>
-        <th>Save</th>
+        <th>Actions</th>
         <th>Delete</th>
       </tr>
 
       <% students.forEach(s => { %>
         <tr>
-          <form method="POST" action="/admin/students/<%= s.id %>/update">
-            <td><%= s.email %></td>
-
-            <td>
-              <input name="first_name" value="<%= s.first_name || '' %>" placeholder="First" />
-              <input name="last_name" value="<%= s.last_name || '' %>" placeholder="Last" />
-            </td>
-
-            <td><input name="phone" value="<%= s.phone || '' %>" /></td>
-
-            <td><input name="employer_name" value="<%= s.employer_name || '' %>" /></td>
-
-            <td>
-              <select name="level">
-                <% LEVELS.forEach(l => { %>
-                  <option value="<%= l %>" <%= Number(s.level) === l ? 'selected' : '' %>><%= l %></option>
-                <% }) %>
-              </select>
-            </td>
-
-            <td>
-              <select name="status">
-                <% STUDENT_STATUSES.forEach(st => { %>
-                  <option value="<%= st %>" <%= s.status === st ? 'selected' : '' %>><%= st %></option>
-                <% }) %>
-              </select>
-            </td>
-
-            <td><input name="general_program_name" value="<%= s.general_program_name || '' %>" /></td>
-            <td><input name="provider_general_program_id" value="<%= s.provider_general_program_id || '' %>" /></td>
-            <td><input name="program_system_id" value="<%= s.program_system_id || '' %>" /></td>
-            <td><input name="student_id_no" value="<%= s.student_id_no || '' %>" /></td>
-            <td><input name="student_id_no_type" value="<%= s.student_id_no_type || 'Other' %>" /></td>
-
-            <td><input name="exit_date" type="date" value="<%= s.exit_date ? String(s.exit_date).slice(0,10) : '' %>" /></td>
-            <td><input name="exit_type" value="<%= s.exit_type || '' %>" /></td>
-            <td>
-              <select name="credential_awarded">
-                <option value="false" <%= s.credential_awarded ? '' : 'selected' %>>No</option>
-                <option value="true" <%= s.credential_awarded ? 'selected' : '' %>>Yes</option>
-              </select>
-            </td>
-
-            <td>
-              <div class="stack">
-                <select name="doc_type">
-                  <% DOC_TYPES.forEach(dt => { %>
-                    <option value="<%= dt %>"><%= dt %></option>
-                  <% }) %>
-                </select>
-                <input name="title" placeholder="Doc title (optional)" form="docform-<%= s.id %>" />
-              </div>
-
-              <form id="docform-<%= s.id %>" method="POST" action="/admin/students/<%= s.id %>/documents/upload" enctype="multipart/form-data" class="stack">
-                <input type="hidden" name="doc_type" value="Other" />
-                <input type="file" name="file" required />
-                <button type="submit">Upload</button>
-              </form>
-
-              <div class="muted small">
-                Tip: upload transcripts + certificates here for audit-proof storage.
-              </div>
-            </td>
-
-            <td><button>Save</button></td>
-          </form>
-
+          <td><%= s.email %></td>
+          <td><%= (s.first_name || '') %> <%= (s.last_name || '') %></td>
+          <td><%= s.employer_name || '' %></td>
+          <td>Level <%= s.level %></td>
+          <td><%= s.status %></td>
+          <td>
+            <span class="pill <%= s.rapids_code %>"><%= s.rapids_label %></span>
+          </td>
+          <td><%= s.docs_count %></td>
+          <td>
+            <a class="btn" href="/admin/students/<%= s.id %>">View / Edit</a>
+          </td>
           <td>
             <form method="POST" action="/admin/students/<%= s.id %>/delete">
-              <button onclick="return confirm('Delete this student?')">X</button>
+              <button class="danger" onclick="return confirm('Delete this student and their login?')">X</button>
             </form>
           </td>
         </tr>
@@ -173,23 +102,18 @@
         <th>Company</th>
         <th>Contact</th>
         <th>Phone</th>
-        <th>Save</th>
         <th>Delete</th>
       </tr>
 
       <% employers.forEach(e => { %>
         <tr>
-          <form method="POST" action="/admin/employers/<%= e.id %>/update">
-            <td><%= e.email %></td>
-            <td><input name="company_name" value="<%= e.company_name || '' %>" /></td>
-            <td><input name="contact_name" value="<%= e.contact_name || '' %>" /></td>
-            <td><input name="phone" value="<%= e.phone || '' %>" /></td>
-            <td><button>Save</button></td>
-          </form>
-
+          <td><%= e.email %></td>
+          <td><%= e.company_name || '' %></td>
+          <td><%= e.contact_name || '' %></td>
+          <td><%= e.phone || '' %></td>
           <td>
             <form method="POST" action="/admin/employers/<%= e.id %>/delete">
-              <button onclick="return confirm('Delete this employer?')">X</button>
+              <button class="danger" onclick="return confirm('Delete this employer and their login?')">X</button>
             </form>
           </td>
         </tr>
