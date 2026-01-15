@@ -1,4 +1,4 @@
-// server.js — ADMIN + STUDENT + EMPLOYER + DOCUMENT VAULT + EXPORTS
+// server.js — Admin + Student Detail + Document Vault + RAPIDS Readiness
 
 const express = require("express");
 const session = require("express-session");
@@ -6,7 +6,6 @@ const bcrypt = require("bcryptjs");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
-const { stringify } = require("csv-stringify/sync");
 const { pool, initDb } = require("./db");
 
 const app = express();
@@ -15,17 +14,32 @@ const isProduction = process.env.NODE_ENV === "production";
 
 app.set("trust proxy", 1);
 
-/* ===================== CONSTANTS FOR VIEWS ===================== */
+/* ===================== CONSTANTS ===================== */
 const LEVELS = [1, 2, 3, 4];
-const STUDENT_STATUSES = ["Pending Enrollment", "Active", "On Hold", "Completed", "Withdrawn"];
+const STUDENT_STATUSES = [
+  "Pending Enrollment",
+  "Active",
+  "On Hold",
+  "Completed",
+  "Withdrawn",
+];
 
 const DOC_TYPES = [
   "ID",
   "Apprentice Card",
   "Journeyman Certificate",
-  "Affidavit of Experience",
   "Transcript",
   "Completion Certificate",
+  "Affidavit of Experience",
+  "RAPIDS Agreement",
+  "Other",
+];
+
+const STUDENT_ID_TYPES = [
+  "None",
+  "Driver License",
+  "State ID",
+  "Passport",
   "Other",
 ];
 
@@ -65,16 +79,13 @@ app.use(
 /* ===================== HELPERS ===================== */
 const cleanEmail = (v) => String(v || "").trim().toLowerCase();
 
-const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const wrap = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
 
 const requireRole = (role) => (req, res, next) => {
-  if (!req.session.user || req.session.user.role !== role) return res.redirect("/login");
-  next();
-};
-
-const requireAnyRole = (roles) => (req, res, next) => {
-  if (!req.session.user) return res.redirect("/login");
-  if (!roles.includes(req.session.user.role)) return res.redirect("/login");
+  if (!req.session.user || req.session.user.role !== role) {
+    return res.redirect("/login");
+  }
   next();
 };
 
@@ -84,33 +95,64 @@ function safeTempPassword(input) {
 }
 
 function randomPassword() {
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2, 6);
+  return (
+    Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2, 6)
+  );
 }
 
 function isDuplicateEmailError(err) {
-  return err && (err.code === "23505" || String(err.message || "").includes("duplicate key"));
+  return (
+    err &&
+    (err.code === "23505" ||
+      String(err.message || "").includes("duplicate key"))
+  );
 }
 
-/* ===================== UPLOADS (LOCAL) ===================== */
-// NOTE: Render’s filesystem can be ephemeral unless you attach a persistent disk.
-// This is still fine for an initial hard-compliance build; next revision can move to S3.
-const UPLOAD_DIR = path.join(__dirname, "uploads");
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// RAPIDS readiness: strict but practical.
+// You can tighten later based on exact required export columns.
+function rapidsReadiness(student) {
+  const required = [
+    "program_name",
+    "provider_program_id",
+    "program_system_id",
+    "student_id_no",
+    "student_id_type",
+    "enrollment_date",
+  ];
+
+  const missing = required.filter((k) => {
+    const v = student[k];
+    if (v === null || v === undefined) return true;
+    if (typeof v === "string" && v.trim() === "") return true;
+    return false;
+  });
+
+  if (missing.length === 0) return { label: "✅ Ready", code: "ready", missing };
+  if (missing.length <= 2) return { label: "⚠️ Nearly", code: "nearly", missing };
+  return { label: "❌ Incomplete", code: "incomplete", missing };
+}
+
+function cleanText(v) {
+  return String(v ?? "").trim();
+}
+
+/* ===================== UPLOADS SETUP ===================== */
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const safeBase = String(file.originalname || "file")
-      .replace(/[^\w.\-]+/g, "_")
-      .slice(0, 120);
-    const stamp = Date.now();
-    cb(null, `${stamp}_${Math.random().toString(36).slice(2)}_${safeBase}`);
+  destination: function (req, file, cb) {
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]+/g, "_");
+    cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB per file for now
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
 });
 
 /* ===================== ROOT ===================== */
@@ -127,17 +169,26 @@ app.post(
     const email = cleanEmail(req.body.email);
     const password = String(req.body.password || "");
 
-    const { rows } = await pool.query("SELECT * FROM users WHERE email=$1", [email]);
+    const { rows } = await pool.query("SELECT * FROM users WHERE email=$1", [
+      email,
+    ]);
 
     if (!rows.length || !bcrypt.compareSync(password, rows[0].password_hash)) {
-      return res.redirect("/login?msg=" + encodeURIComponent("Invalid email or password"));
+      return res.redirect(
+        "/login?msg=" + encodeURIComponent("Invalid email or password")
+      );
     }
 
-    req.session.user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
+    req.session.user = {
+      id: rows[0].id,
+      email: rows[0].email,
+      role: rows[0].role,
+    };
 
     if (rows[0].role === "admin") return res.redirect("/admin");
     if (rows[0].role === "student") return res.redirect("/student");
     if (rows[0].role === "employer") return res.redirect("/employer");
+
     return res.redirect("/login");
   })
 );
@@ -151,6 +202,7 @@ app.get(
   "/admin",
   requireRole("admin"),
   wrap(async (req, res) => {
+    // Slim list only (no clutter)
     const students = await pool.query(
       `SELECT s.*, u.email
        FROM students s
@@ -165,13 +217,31 @@ app.get(
        ORDER BY e.id DESC`
     );
 
+    // Doc counts for quick view
+    const docCounts = await pool.query(
+      `SELECT student_id, COUNT(*)::int AS cnt
+       FROM student_documents
+       GROUP BY student_id`
+    );
+
+    const docCountMap = new Map(docCounts.rows.map((r) => [String(r.student_id), r.cnt]));
+
+    const studentsWithIndicators = students.rows.map((s) => {
+      const r = rapidsReadiness(s);
+      return {
+        ...s,
+        rapids_label: r.label,
+        rapids_code: r.code,
+        docs_count: docCountMap.get(String(s.id)) || 0,
+      };
+    });
+
     res.render("admin", {
       user: req.session.user,
-      students: students.rows,
+      students: studentsWithIndicators,
       employers: employers.rows,
       LEVELS,
       STUDENT_STATUSES,
-      DOC_TYPES,
       message: req.query.msg || null,
     });
   })
@@ -183,25 +253,14 @@ app.get(
   wrap(async (req, res) => {
     const r = await pool.query(
       `SELECT s.*, u.email
-       FROM students s
-       JOIN users u ON u.id = s.user_id
+       FROM students s JOIN users u ON u.id = s.user_id
        WHERE s.user_id = $1`,
-      [req.session.user.id]
-    );
-
-    const docs = await pool.query(
-      `SELECT * FROM documents
-       WHERE owner_user_id = $1
-       ORDER BY uploaded_at DESC`,
       [req.session.user.id]
     );
 
     res.render("student", {
       user: req.session.user,
       student: r.rows[0],
-      documents: docs.rows,
-      DOC_TYPES,
-      message: req.query.msg || null,
     });
   })
 );
@@ -212,30 +271,19 @@ app.get(
   wrap(async (req, res) => {
     const r = await pool.query(
       `SELECT e.*, u.email
-       FROM employers e
-       JOIN users u ON u.id = e.user_id
+       FROM employers e JOIN users u ON u.id = e.user_id
        WHERE e.user_id = $1`,
-      [req.session.user.id]
-    );
-
-    const docs = await pool.query(
-      `SELECT * FROM documents
-       WHERE owner_user_id = $1
-       ORDER BY uploaded_at DESC`,
       [req.session.user.id]
     );
 
     res.render("employer", {
       user: req.session.user,
       employer: r.rows[0],
-      documents: docs.rows,
-      DOC_TYPES,
-      message: req.query.msg || null,
     });
   })
 );
 
-/* ===================== ADMIN CREATE ===================== */
+/* ===================== ADMIN CREATE USERS ===================== */
 async function createUser({ email, role, tempPasswordInput }) {
   const tempPassword = safeTempPassword(tempPasswordInput);
   const password = tempPassword || randomPassword();
@@ -257,7 +305,8 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const email = cleanEmail(req.body.email);
-    if (!email) return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
+    if (!email)
+      return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
 
     try {
       const { userId, password } = await createUser({
@@ -268,9 +317,16 @@ app.post(
 
       await pool.query(`INSERT INTO students (user_id) VALUES ($1)`, [userId]);
 
-      return res.redirect("/admin?msg=" + encodeURIComponent(`Student created. Temp password: ${password}`));
+      return res.redirect(
+        "/admin?msg=" +
+          encodeURIComponent(`Student created. Temp password: ${password}`)
+      );
     } catch (e) {
-      if (isDuplicateEmailError(e)) return res.redirect("/admin?msg=" + encodeURIComponent("Email already exists"));
+      if (isDuplicateEmailError(e)) {
+        return res.redirect(
+          "/admin?msg=" + encodeURIComponent("Email already exists")
+        );
+      }
       throw e;
     }
   })
@@ -282,7 +338,8 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const email = cleanEmail(req.body.email);
-    if (!email) return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
+    if (!email)
+      return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
 
     try {
       const { userId, password } = await createUser({
@@ -293,93 +350,224 @@ app.post(
 
       await pool.query(`INSERT INTO employers (user_id) VALUES ($1)`, [userId]);
 
-      return res.redirect("/admin?msg=" + encodeURIComponent(`Employer created. Temp password: ${password}`));
+      return res.redirect(
+        "/admin?msg=" +
+          encodeURIComponent(`Employer created. Temp password: ${password}`)
+      );
     } catch (e) {
-      if (isDuplicateEmailError(e)) return res.redirect("/admin?msg=" + encodeURIComponent("Email already exists"));
+      if (isDuplicateEmailError(e)) {
+        return res.redirect(
+          "/admin?msg=" + encodeURIComponent("Email already exists")
+        );
+      }
       throw e;
     }
   })
 );
 
-/* ===================== ADMIN UPDATE/DELETE (STUDENTS) ===================== */
-app.post(
-  "/admin/students/:id/update",
+/* ===================== ADMIN: STUDENT DETAIL ===================== */
+app.get(
+  "/admin/students/:id",
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
 
-    // status change auditing
-    const cur = await pool.query(`SELECT status FROM students WHERE id=$1`, [studentId]);
-    if (!cur.rows.length) return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
+    const s = await pool.query(
+      `SELECT s.*, u.email
+       FROM students s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.id = $1`,
+      [studentId]
+    );
 
-    const oldStatus = cur.rows[0].status;
-    const newStatus = String(req.body.status || oldStatus);
+    if (!s.rows.length) {
+      return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
+    }
+
+    const docs = await pool.query(
+      `SELECT d.*, u.email AS uploader_email
+       FROM student_documents d
+       LEFT JOIN users u ON u.id = d.uploaded_by_user_id
+       WHERE d.student_id = $1
+       ORDER BY d.created_at DESC`,
+      [studentId]
+    );
+
+    const readiness = rapidsReadiness(s.rows[0]);
+
+    res.render("admin-student", {
+      user: req.session.user,
+      student: s.rows[0],
+      docs: docs.rows,
+      readiness,
+      LEVELS,
+      STUDENT_STATUSES,
+      DOC_TYPES,
+      STUDENT_ID_TYPES,
+      message: req.query.msg || null,
+    });
+  })
+);
+
+// UPDATE STUDENT IDENTITY + BASIC PROGRESS
+app.post(
+  "/admin/students/:id/update-identity",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const studentId = Number(req.params.id);
 
     await pool.query(
-      `UPDATE students SET
-        first_name=$1, last_name=$2, phone=$3, employer_name=$4,
-        level=$5, status=$6,
-        general_program_name=$7, provider_general_program_id=$8, program_system_id=$9,
-        student_id_no=$10, student_id_no_type=$11,
-        exit_date=$12, exit_type=$13, credential_awarded=$14
-       WHERE id=$15`,
+      `UPDATE students
+       SET first_name=$1, last_name=$2, phone=$3, employer_name=$4, level=$5, status=$6
+       WHERE id=$7`,
       [
-        String(req.body.first_name || ""),
-        String(req.body.last_name || ""),
-        String(req.body.phone || ""),
-        String(req.body.employer_name || ""),
+        cleanText(req.body.first_name),
+        cleanText(req.body.last_name),
+        cleanText(req.body.phone),
+        cleanText(req.body.employer_name),
         Number(req.body.level || 1),
-        newStatus,
-        String(req.body.general_program_name || ""),
-        String(req.body.provider_general_program_id || ""),
-        String(req.body.program_system_id || ""),
-        String(req.body.student_id_no || ""),
-        String(req.body.student_id_no_type || "Other"),
-        req.body.exit_date ? String(req.body.exit_date) : null,
-        String(req.body.exit_type || ""),
-        String(req.body.credential_awarded || "").toLowerCase() === "true",
+        cleanText(req.body.status),
         studentId,
       ]
     );
 
-    if (oldStatus !== newStatus) {
-      await pool.query(
-        `INSERT INTO student_status_history (student_id, old_status, new_status, changed_by_user_id)
-         VALUES ($1,$2,$3,$4)`,
-        [studentId, oldStatus, newStatus, req.session.user.id]
-      );
-    }
-
-    return res.redirect("/admin?msg=" + encodeURIComponent("Student updated"));
+    return res.redirect(
+      `/admin/students/${studentId}?msg=` +
+        encodeURIComponent("Identity / Progress updated")
+    );
   })
 );
 
+// UPDATE RAPIDS FIELDS
+app.post(
+  "/admin/students/:id/update-rapids",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const studentId = Number(req.params.id);
+
+    const enrollmentDate = req.body.enrollment_date
+      ? req.body.enrollment_date
+      : null;
+    const exitDate = req.body.exit_date ? req.body.exit_date : null;
+
+    await pool.query(
+      `UPDATE students
+       SET program_name=$1,
+           provider_program_id=$2,
+           program_system_id=$3,
+           student_id_no=$4,
+           student_id_type=$5,
+           enrollment_date=$6,
+           exit_date=$7,
+           exit_type=$8,
+           credential=$9
+       WHERE id=$10`,
+      [
+        cleanText(req.body.program_name),
+        cleanText(req.body.provider_program_id),
+        cleanText(req.body.program_system_id),
+        cleanText(req.body.student_id_no),
+        cleanText(req.body.student_id_type),
+        enrollmentDate,
+        exitDate,
+        cleanText(req.body.exit_type),
+        cleanText(req.body.credential),
+        studentId,
+      ]
+    );
+
+    return res.redirect(
+      `/admin/students/${studentId}?msg=` +
+        encodeURIComponent("RAPIDS fields updated")
+    );
+  })
+);
+
+// UPLOAD DOCUMENT (Admin-only this revision)
+app.post(
+  "/admin/students/:id/docs/upload",
+  requireRole("admin"),
+  upload.single("doc_file"),
+  wrap(async (req, res) => {
+    const studentId = Number(req.params.id);
+
+    if (!req.file) {
+      return res.redirect(
+        `/admin/students/${studentId}?msg=` +
+          encodeURIComponent("No file selected")
+      );
+    }
+
+    const docType = cleanText(req.body.doc_type);
+    const title = cleanText(req.body.title);
+
+    await pool.query(
+      `INSERT INTO student_documents
+       (student_id, uploaded_by_user_id, doc_type, title, original_filename, stored_filename, mime_type, file_size_bytes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        studentId,
+        req.session.user.id,
+        docType || "Other",
+        title || req.file.originalname,
+        req.file.originalname,
+        req.file.filename,
+        req.file.mimetype || "application/octet-stream",
+        Number(req.file.size || 0),
+      ]
+    );
+
+    return res.redirect(
+      `/admin/students/${studentId}?msg=` +
+        encodeURIComponent("Document uploaded")
+    );
+  })
+);
+
+// DOWNLOAD DOCUMENT (Admin-only this revision)
+app.get(
+  "/admin/docs/:docId/download",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const docId = Number(req.params.docId);
+
+    const d = await pool.query(
+      `SELECT * FROM student_documents WHERE id=$1`,
+      [docId]
+    );
+
+    if (!d.rows.length) return res.status(404).send("Not found");
+
+    const doc = d.rows[0];
+    const filePath = path.join(uploadDir, doc.stored_filename);
+
+    if (!fs.existsSync(filePath)) return res.status(404).send("File missing");
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${doc.original_filename.replace(/"/g, "")}"`
+    );
+    return res.download(filePath);
+  })
+);
+
+/* ===================== ADMIN DELETE ===================== */
 app.post(
   "/admin/students/:id/delete",
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
-    await pool.query(`DELETE FROM students WHERE id=$1`, [studentId]);
-    return res.redirect("/admin?msg=" + encodeURIComponent("Student deleted"));
-  })
-);
 
-/* ===================== ADMIN UPDATE/DELETE (EMPLOYERS) ===================== */
-app.post(
-  "/admin/employers/:id/update",
-  requireRole("admin"),
-  wrap(async (req, res) => {
-    const employerId = Number(req.params.id);
-    await pool.query(
-      `UPDATE employers SET company_name=$1, contact_name=$2, phone=$3 WHERE id=$4`,
-      [
-        String(req.body.company_name || ""),
-        String(req.body.contact_name || ""),
-        String(req.body.phone || ""),
-        employerId,
-      ]
-    );
-    return res.redirect("/admin?msg=" + encodeURIComponent("Employer updated"));
+    // deletes student row; cascades to user and docs via FK cascade on students? docs cascade on student_id.
+    // user cascade is via students.user_id unique reference + ON DELETE CASCADE in students, but we delete student first here.
+    const s = await pool.query(`SELECT user_id FROM students WHERE id=$1`, [studentId]);
+    if (!s.rows.length) return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
+
+    const userId = s.rows[0].user_id;
+
+    await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
+
+    return res.redirect("/admin?msg=" + encodeURIComponent("Student deleted"));
   })
 );
 
@@ -388,251 +576,15 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const employerId = Number(req.params.id);
-    await pool.query(`DELETE FROM employers WHERE id=$1`, [employerId]);
+
+    const e = await pool.query(`SELECT user_id FROM employers WHERE id=$1`, [employerId]);
+    if (!e.rows.length) return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
+
+    const userId = e.rows[0].user_id;
+
+    await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
+
     return res.redirect("/admin?msg=" + encodeURIComponent("Employer deleted"));
-  })
-);
-
-/* ===================== DOCUMENT UPLOADS ===================== */
-// student self-upload
-app.post(
-  "/student/documents/upload",
-  requireRole("student"),
-  upload.single("file"),
-  wrap(async (req, res) => {
-    if (!req.file) return res.redirect("/student?msg=" + encodeURIComponent("No file uploaded"));
-
-    const student = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [req.session.user.id]);
-    const studentId = student.rows.length ? student.rows[0].id : null;
-
-    await pool.query(
-      `INSERT INTO documents (
-        owner_user_id, student_id, uploaded_by_user_id,
-        doc_type, title, notes,
-        original_filename, stored_filename, storage_path, mime_type, size_bytes
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [
-        req.session.user.id,
-        studentId,
-        req.session.user.id,
-        String(req.body.doc_type || "Other"),
-        String(req.body.title || ""),
-        String(req.body.notes || ""),
-        req.file.originalname,
-        req.file.filename,
-        req.file.path,
-        req.file.mimetype || "application/octet-stream",
-        Number(req.file.size || 0),
-      ]
-    );
-
-    return res.redirect("/student?msg=" + encodeURIComponent("Document uploaded"));
-  })
-);
-
-// employer self-upload
-app.post(
-  "/employer/documents/upload",
-  requireRole("employer"),
-  upload.single("file"),
-  wrap(async (req, res) => {
-    if (!req.file) return res.redirect("/employer?msg=" + encodeURIComponent("No file uploaded"));
-
-    const employer = await pool.query(`SELECT id FROM employers WHERE user_id=$1`, [req.session.user.id]);
-    const employerId = employer.rows.length ? employer.rows[0].id : null;
-
-    await pool.query(
-      `INSERT INTO documents (
-        owner_user_id, employer_id, uploaded_by_user_id,
-        doc_type, title, notes,
-        original_filename, stored_filename, storage_path, mime_type, size_bytes
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [
-        req.session.user.id,
-        employerId,
-        req.session.user.id,
-        String(req.body.doc_type || "Other"),
-        String(req.body.title || ""),
-        String(req.body.notes || ""),
-        req.file.originalname,
-        req.file.filename,
-        req.file.path,
-        req.file.mimetype || "application/octet-stream",
-        Number(req.file.size || 0),
-      ]
-    );
-
-    return res.redirect("/employer?msg=" + encodeURIComponent("Document uploaded"));
-  })
-);
-
-// admin upload to a specific student
-app.post(
-  "/admin/students/:id/documents/upload",
-  requireRole("admin"),
-  upload.single("file"),
-  wrap(async (req, res) => {
-    const studentId = Number(req.params.id);
-    if (!req.file) return res.redirect("/admin?msg=" + encodeURIComponent("No file uploaded"));
-
-    const s = await pool.query(`SELECT user_id FROM students WHERE id=$1`, [studentId]);
-    if (!s.rows.length) return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
-
-    const ownerUserId = s.rows[0].user_id;
-
-    await pool.query(
-      `INSERT INTO documents (
-        owner_user_id, student_id, uploaded_by_user_id,
-        doc_type, title, notes,
-        original_filename, stored_filename, storage_path, mime_type, size_bytes
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [
-        ownerUserId,
-        studentId,
-        req.session.user.id,
-        String(req.body.doc_type || "Other"),
-        String(req.body.title || ""),
-        String(req.body.notes || ""),
-        req.file.originalname,
-        req.file.filename,
-        req.file.path,
-        req.file.mimetype || "application/octet-stream",
-        Number(req.file.size || 0),
-      ]
-    );
-
-    return res.redirect("/admin?msg=" + encodeURIComponent("Document uploaded to student"));
-  })
-);
-
-/* ===================== DOCUMENT DOWNLOAD (ROLE CHECKED) ===================== */
-app.get(
-  "/documents/:id/download",
-  requireAnyRole(["admin", "student", "employer"]),
-  wrap(async (req, res) => {
-    const docId = Number(req.params.id);
-    const d = await pool.query(`SELECT * FROM documents WHERE id=$1`, [docId]);
-    if (!d.rows.length) return res.status(404).send("Not found");
-
-    const doc = d.rows[0];
-    const role = req.session.user.role;
-
-    // Admin can download anything
-    if (role === "admin") {
-      return res.download(doc.storage_path, doc.original_filename);
-    }
-
-    // Student/employer can only download what they own
-    if (doc.owner_user_id !== req.session.user.id) {
-      return res.status(403).send("Forbidden");
-    }
-
-    return res.download(doc.storage_path, doc.original_filename);
-  })
-);
-
-app.post(
-  "/documents/:id/delete",
-  requireAnyRole(["admin", "student", "employer"]),
-  wrap(async (req, res) => {
-    const docId = Number(req.params.id);
-    const d = await pool.query(`SELECT * FROM documents WHERE id=$1`, [docId]);
-    if (!d.rows.length) return res.status(404).send("Not found");
-
-    const doc = d.rows[0];
-    const role = req.session.user.role;
-
-    if (role !== "admin" && doc.owner_user_id !== req.session.user.id) {
-      return res.status(403).send("Forbidden");
-    }
-
-    // remove row; student/employer should not be able to delete somebody else’s docs
-    await pool.query(`DELETE FROM documents WHERE id=$1`, [docId]);
-
-    // best-effort delete file
-    try {
-      fs.unlinkSync(doc.storage_path);
-    } catch (_) {}
-
-    if (role === "admin") return res.redirect("/admin?msg=" + encodeURIComponent("Document deleted"));
-    if (role === "student") return res.redirect("/student?msg=" + encodeURIComponent("Document deleted"));
-    return res.redirect("/employer?msg=" + encodeURIComponent("Document deleted"));
-  })
-);
-
-/* ===================== EXPORTS (MATCH YOUR TEMPLATE HEADERS) ===================== */
-// Enrolle Template headers:
-// General Program Name, Provider General Program ID, Program_System ID, Enrollee Student ID No., Student ID No. Type, Program Entry Date
-app.get(
-  "/admin/export/enrollees.csv",
-  requireRole("admin"),
-  wrap(async (req, res) => {
-    const students = await pool.query(`SELECT * FROM students ORDER BY id ASC`);
-
-    const records = students.rows.map((s) => [
-      s.general_program_name || "",
-      s.provider_general_program_id || "",
-      s.program_system_id || "",
-      s.student_id_no || "",
-      s.student_id_no_type || "Other",
-      "", // Program Entry Date (next rev: store start_date and populate)
-    ]);
-
-    const csv = stringify(records, {
-      header: true,
-      columns: [
-        "General Program Name",
-        "Provider General Program ID",
-        "Program_System ID",
-        "Enrollee Student ID No.",
-        "Student ID No. Type",
-        "Program Entry Date",
-      ],
-    });
-
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", "attachment; filename=enrollees.csv");
-    return res.send(csv);
-  })
-);
-
-// Exiter Template headers:
-// General Program Name, Provider General Program ID, Program_System ID, Exiter Student ID No., Student ID No. Type,
-// Date Student Exited Program, Exit Type, Credential Awarded Yes/No
-app.get(
-  "/admin/export/exiters.csv",
-  requireRole("admin"),
-  wrap(async (req, res) => {
-    const students = await pool.query(`SELECT * FROM students ORDER BY id ASC`);
-
-    const records = students.rows.map((s) => [
-      s.general_program_name || "",
-      s.provider_general_program_id || "",
-      s.program_system_id || "",
-      s.student_id_no || "",
-      s.student_id_no_type || "Other",
-      s.exit_date ? String(s.exit_date) : "",
-      s.exit_type || "",
-      s.credential_awarded ? "Yes" : "No",
-    ]);
-
-    const csv = stringify(records, {
-      header: true,
-      columns: [
-        "General Program Name",
-        "Provider General Program ID",
-        "Program_System ID",
-        "Exiter Student ID No.",
-        "Student ID No. Type",
-        "Date Student Exited Program",
-        "Exit Type",
-        "Credential Awarded Yes/No",
-      ],
-    });
-
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", "attachment; filename=exiters.csv");
-    return res.send(csv);
   })
 );
 
@@ -652,6 +604,9 @@ app.get("/__routes", (req, res) => {
   res.json(
     app._router.stack
       .filter((r) => r.route)
-      .map((r) => Object.keys(r.route.methods)[0].toUpperCase() + " " + r.route.path)
+      .map(
+        (r) =>
+          Object.keys(r.route.methods)[0].toUpperCase() + " " + r.route.path
+      )
   );
 });
