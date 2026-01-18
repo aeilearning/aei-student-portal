@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>AEI Admin Dashboard</title>
+  <title>AEI Admin</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body class="container">
@@ -24,11 +24,11 @@
     <form method="POST" action="/admin/students/create" class="grid2">
       <div class="stack">
         <label>Student Email</label>
-        <input name="email" type="email" required />
+        <input name="email" placeholder="student@example.com" required />
       </div>
       <div class="stack">
         <label>Temp Password (optional)</label>
-        <input name="temp_password" placeholder="Auto-generated if blank" />
+        <input name="temp_password" placeholder="leave blank for auto" />
       </div>
       <div>
         <button>Create Student</button>
@@ -37,55 +37,15 @@
   </div>
 
   <div class="card">
-    <h2>Students</h2>
-
-    <table>
-      <tr>
-        <th>Email</th>
-        <th>Name</th>
-        <th>Employer</th>
-        <th>Level</th>
-        <th>Status</th>
-        <th>RAPIDS</th>
-        <th>Docs</th>
-        <th>Actions</th>
-        <th>Delete</th>
-      </tr>
-
-      <% students.forEach(s => { %>
-        <tr>
-          <td><%= s.email %></td>
-          <td><%= (s.first_name || '') %> <%= (s.last_name || '') %></td>
-          <td><%= s.employer_name || '' %></td>
-          <td>Level <%= s.level %></td>
-          <td><%= s.status %></td>
-          <td>
-            <span class="pill <%= s.rapids_code %>"><%= s.rapids_label %></span>
-          </td>
-          <td><%= s.docs_count %></td>
-          <td>
-            <a class="btn" href="/admin/students/<%= s.id %>">View / Edit</a>
-          </td>
-          <td>
-            <form method="POST" action="/admin/students/<%= s.id %>/delete">
-              <button class="danger" onclick="return confirm('Delete this student and their login?')">X</button>
-            </form>
-          </td>
-        </tr>
-      <% }) %>
-    </table>
-  </div>
-
-  <div class="card">
     <h2>Create Employer</h2>
     <form method="POST" action="/admin/employers/create" class="grid2">
       <div class="stack">
         <label>Employer Email</label>
-        <input name="email" type="email" required />
+        <input name="email" placeholder="employer@example.com" required />
       </div>
       <div class="stack">
         <label>Temp Password (optional)</label>
-        <input name="temp_password" placeholder="Auto-generated if blank" />
+        <input name="temp_password" placeholder="leave blank for auto" />
       </div>
       <div>
         <button>Create Employer</button>
@@ -94,32 +54,55 @@
   </div>
 
   <div class="card">
-    <h2>Employers</h2>
-
-    <table>
-      <tr>
-        <th>Email</th>
-        <th>Company</th>
-        <th>Contact</th>
-        <th>Phone</th>
-        <th>Delete</th>
-      </tr>
-
-      <% employers.forEach(e => { %>
+    <h2>Students</h2>
+    <% if (!students || !students.length) { %>
+      <div class="muted small">No students yet.</div>
+    <% } else { %>
+      <table>
         <tr>
-          <td><%= e.email %></td>
-          <td><%= e.company_name || '' %></td>
-          <td><%= e.contact_name || '' %></td>
-          <td><%= e.phone || '' %></td>
-          <td>
-            <form method="POST" action="/admin/employers/<%= e.id %>/delete">
-              <button class="danger" onclick="return confirm('Delete this employer and their login?')">X</button>
-            </form>
-          </td>
+          <th>ID</th>
+          <th>Email</th>
+          <th>Name</th>
+          <th>Level</th>
+          <th>Status</th>
+          <th>Open</th>
         </tr>
-      <% }) %>
-    </table>
+        <% students.forEach(s => { %>
+          <tr>
+            <td><%= s.id %></td>
+            <td><%= s.email %></td>
+            <td><%= (s.first_name || '') %> <%= (s.last_name || '') %></td>
+            <td><%= s.level %></td>
+            <td><%= s.status %></td>
+            <td><a class="btn" href="/admin/students/<%= s.id %>">Open</a></td>
+          </tr>
+        <% }) %>
+      </table>
+    <% } %>
+  </div>
+
+  <div class="card">
+    <h2>Employers</h2>
+    <% if (!employers || !employers.length) { %>
+      <div class="muted small">No employers yet.</div>
+    <% } else { %>
+      <table>
+        <tr>
+          <th>ID</th>
+          <th>Email</th>
+          <th>Company</th>
+        </tr>
+        <% employers.forEach(e => { %>
+          <tr>
+            <td><%= e.id %></td>
+            <td><%= e.email %></td>
+            <td><%= e.company_name || '' %></td>
+          </tr>
+        <% }) %>
+      </table>
+    <% } %>
   </div>
 
 </body>
 </html>
+
