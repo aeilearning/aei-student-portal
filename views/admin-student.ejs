@@ -33,26 +33,9 @@
           • <%= student.status %>
         </div>
       </div>
-
-      <div class="right">
-        <div class="muted small">RAPIDS Readiness</div>
-        <div class="pill <%= readiness.code %>"><%= readiness.label %></div>
-      </div>
     </div>
-
-    <% if (readiness.missing && readiness.missing.length) { %>
-      <div class="note warning">
-        <b>Missing for RAPIDS readiness:</b>
-        <ul class="small">
-          <% readiness.missing.forEach(m => { %>
-            <li><%= m %></li>
-          <% }) %>
-        </ul>
-      </div>
-    <% } %>
   </div>
 
-  <!-- ===================== IDENTITY / PROGRESS ===================== -->
   <div class="card">
     <h2>Identity & Progress</h2>
 
@@ -101,95 +84,37 @@
     </form>
   </div>
 
-  <!-- ===================== RAPIDS ===================== -->
   <div class="card">
-    <h2>RAPIDS Enrollment & Outcomes</h2>
-    <div class="muted small">
-      This section is compliance-facing. Keep it accurate and complete for exports and audits.
-    </div>
-
-    <form method="POST" action="/admin/students/<%= student.id %>/update-rapids" class="grid2">
-      <div class="stack">
-        <label>Program Name</label>
-        <input name="program_name" value="<%= student.program_name || '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Provider Program ID</label>
-        <input name="provider_program_id" value="<%= student.provider_program_id || '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Program System ID</label>
-        <input name="program_system_id" value="<%= student.program_system_id || '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Student ID No.</label>
-        <input name="student_id_no" value="<%= student.student_id_no || '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Student ID Type</label>
-        <select name="student_id_type">
-          <% STUDENT_ID_TYPES.forEach(t => { %>
-            <option value="<%= t %>" <%= (student.student_id_type || '') === t ? 'selected' : '' %>><%= t %></option>
-          <% }) %>
-        </select>
-      </div>
-
-      <div class="stack">
-        <label>Enrollment Date</label>
-        <input name="enrollment_date" type="date" value="<%= student.enrollment_date ? student.enrollment_date.toISOString().slice(0,10) : '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Exit Date</label>
-        <input name="exit_date" type="date" value="<%= student.exit_date ? student.exit_date.toISOString().slice(0,10) : '' %>" />
-      </div>
-
-      <div class="stack">
-        <label>Exit Type</label>
-        <input name="exit_type" value="<%= student.exit_type || '' %>" placeholder="e.g. Completed, Cancelled, etc." />
-      </div>
-
-      <div class="stack">
-        <label>Credential</label>
-        <input name="credential" value="<%= student.credential || '' %>" placeholder="e.g. Certificate earned" />
-      </div>
-
+    <div class="row-between">
       <div>
-        <button>Save RAPIDS Fields</button>
+        <h2>Document Vault</h2>
+        <div class="muted small">
+          Admin upload + download. Files are grouped by required category for fast review.
+        </div>
       </div>
-    </form>
-  </div>
-
-  <!-- ===================== DOC VAULT ===================== -->
-  <div class="card">
-    <h2>Document Vault</h2>
-    <div class="muted small">
-      Store critical documents here so students and employers don’t lose paperwork during licensing and audit cycles.
-      (Admin upload in this revision — we can open uploads to student/employer next.)
+      <div class="right">
+        <a class="btn" href="/admin/students/<%= student.id %>/docs/download-all">Download All (ZIP)</a>
+      </div>
     </div>
 
     <form method="POST" action="/admin/students/<%= student.id %>/docs/upload" enctype="multipart/form-data" class="grid2">
       <div class="stack">
-        <label>Document Type</label>
-        <select name="doc_type">
-          <% DOC_TYPES.forEach(dt => { %>
-            <option value="<%= dt %>"><%= dt %></option>
+        <label>Category (required)</label>
+        <select name="category" required>
+          <% DOC_CATEGORIES.forEach(c => { %>
+            <option value="<%= c %>"><%= c %></option>
           <% }) %>
         </select>
       </div>
 
       <div class="stack">
-        <label>Document Title (optional)</label>
+        <label>Title (optional but recommended)</label>
         <input name="title" placeholder="e.g. CO Apprentice Card - 2026" />
       </div>
 
       <div class="stack">
         <label>File</label>
-        <input type="file" name="doc_file" required />
+        <input type="file" name="file" required />
       </div>
 
       <div>
@@ -199,33 +124,32 @@
 
     <hr />
 
-    <h3>Stored Documents (<%= docs.length %>)</h3>
-
-    <% if (!docs.length) { %>
+    <% if (!groupedDocs || !groupedDocs.length) { %>
       <div class="muted">No documents uploaded yet.</div>
     <% } else { %>
-      <table>
-        <tr>
-          <th>Type</th>
-          <th>Title</th>
-          <th>Uploaded</th>
-          <th>By</th>
-          <th>Download</th>
-        </tr>
-
-        <% docs.forEach(d => { %>
+      <% groupedDocs.forEach(group => { %>
+        <h3><%= group.category %> (<%= group.docs.length %>)</h3>
+        <table>
           <tr>
-            <td><%= d.doc_type %></td>
-            <td><%= d.title || d.original_filename %></td>
-            <td><%= new Date(d.created_at).toLocaleString() %></td>
-            <td><%= d.uploader_email || 'Unknown' %></td>
-            <td>
-              <a class="btn" href="/admin/docs/<%= d.id %>/download">Download</a>
-            </td>
+            <th>Title</th>
+            <th>Original Filename</th>
+            <th>Uploaded</th>
+            <th>By</th>
+            <th>Download</th>
           </tr>
-        <% }) %>
-      </table>
+          <% group.docs.forEach(d => { %>
+            <tr>
+              <td><%= d.title || d.original_filename %></td>
+              <td class="small"><%= d.original_filename %></td>
+              <td class="small"><%= new Date(d.created_at).toLocaleString() %></td>
+              <td class="small"><%= d.uploader_email || 'Unknown' %></td>
+              <td><a class="btn" href="/documents/<%= d.id %>/download">Download</a></td>
+            </tr>
+          <% }) %>
+        </table>
+      <% }) %>
     <% } %>
+
   </div>
 
 </body>
