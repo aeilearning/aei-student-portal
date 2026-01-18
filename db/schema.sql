@@ -1,6 +1,4 @@
--- AEI Student Portal schema (source-of-truth reference)
--- Note: app startup also runs initDb() in db.js to ensure tables exist.
-
+-- USERS: admin, student, employer
 create table if not exists users (
   id bigserial primary key,
   email text not null unique,
@@ -12,27 +10,21 @@ create table if not exists users (
 create table if not exists students (
   id bigserial primary key,
   user_id bigint not null unique references users(id) on delete cascade,
-
   first_name text not null default '',
   last_name text not null default '',
   phone text not null default '',
   employer_name text not null default '',
-
-  level int not null default 1 check (level between 1 and 4),
-  status text not null default 'Pending Enrollment'
-    check (status in ('Pending Enrollment','Active','On Hold','Completed','Withdrawn')),
-
-  program_name text not null default '',
-  provider_program_id text not null default '',
-  program_system_id text not null default '',
-  student_id_no text not null default '',
-  student_id_type text not null default '',
-
+  level int not null default 1,
+  status text not null default 'Pending Enrollment',
+  program_name text,
+  provider_program_id text,
+  program_system_id text,
+  student_id_no text,
+  student_id_type text,
   enrollment_date date,
   exit_date date,
-  exit_type text not null default '',
-  credential text not null default '',
-
+  exit_type text,
+  credential text,
   created_at timestamptz not null default now()
 );
 
@@ -45,43 +37,34 @@ create table if not exists employers (
   created_at timestamptz not null default now()
 );
 
-create table if not exists student_status_history (
-  id bigserial primary key,
-  student_id bigint not null references students(id) on delete cascade,
-  old_status text not null,
-  new_status text not null,
-  changed_by_user_id bigint references users(id),
-  changed_at timestamptz not null default now()
-);
-
--- Requests coming from /register and /reset-password
 create table if not exists access_requests (
   id bigserial primary key,
-  request_type text not null check (request_type in ('register','reset_password')),
+  request_type text not null,
   email text not null,
-  requested_role text not null default '',
-  note text not null default '',
+  requested_role text,
+  note text,
   created_at timestamptz not null default now()
 );
 
--- Unified document vault (student/employer)
-create table if not exists documents (
+create table if not exists student_documents (
   id bigserial primary key,
-
-  entity_type text not null check (entity_type in ('student','employer')),
-  entity_id bigint not null,
-
-  category text not null,
-  title text not null default '',
-
-  original_filename text not null,
-  stored_rel_path text not null unique,
-  mime_type text not null default 'application/octet-stream',
-  file_size_bytes bigint not null default 0,
-
+  student_id bigint references students(id) on delete cascade,
   uploaded_by_user_id bigint references users(id),
+  doc_type text not null,
+  title text not null,
+  original_filename text not null,
+  stored_filename text not null,
+  mime_type text,
+  file_size_bytes bigint,
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_documents_entity on documents(entity_type, entity_id);
-create index if not exists idx_access_requests_email on access_requests(email);
+create table if not exists messages (
+  id bigserial primary key,
+  target_role text not null check (target_role in ('student','employer','both','direct')),
+  target_user_id bigint,
+  title text not null,
+  body text not null,
+  created_by bigint references users(id),
+  created_at timestamptz not null default now()
+);
