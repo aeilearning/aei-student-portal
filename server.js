@@ -1,4 +1,4 @@
-// server.js — Admin + Student Detail + Document Vault + RAPIDS Readiness
+// server.js — Admin + Student/Employer Document Vault (categorized) + Download-All
 const express = require("express");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
@@ -6,6 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 const crypto = require("crypto");
+const archiver = require("archiver");
 const { pool, initDb } = require("./db");
 
 const app = express();
@@ -24,7 +25,11 @@ const STUDENT_STATUSES = [
   "Withdrawn",
 ];
 
-const DOC_TYPES = [
+/**
+ * Fixed categories (dropdown required)
+ * These are intentionally “human recognizable” so you don’t have to open files to guess what they are.
+ */
+const DOC_CATEGORIES = [
   "ID",
   "Apprentice Card",
   "Journeyman Certificate",
@@ -32,6 +37,7 @@ const DOC_TYPES = [
   "Completion Certificate",
   "Affidavit of Experience",
   "RAPIDS Agreement",
+  "Employment / Pay Records",
   "Other",
 ];
 
@@ -63,16 +69,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// SECURITY: In production, require a real SESSION_SECRET (do NOT silently use dev-secret)
-const SESSION_SECRET = process.env.SESSION_SECRET;
-if (isProduction && (!SESSION_SECRET || SESSION_SECRET.trim().length < 20)) {
-  console.error("❌ SESSION_SECRET missing/too short in production. Set it in Render Environment.");
-  process.exit(1);
-}
-
+/**
+ * Sessions
+ * NOTE: For production, you should set SESSION_SECRET in Render.
+ */
 app.use(
   session({
-    secret: SESSION_SECRET || "dev-secret",
+    secret: process.env.SESSION_SECRET || "dev-secret",
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -85,68 +88,56 @@ app.use(
 
 /* ===================== HELPERS ===================== */
 const cleanEmail = (v) => String(v || "").trim().toLowerCase();
+const cleanText = (v) => String(v ?? "").trim();
 
 const wrap = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
 const requireRole = (role) => (req, res, next) => {
-  if (!req.session.user || req.session.user.role !== role) {
-    return res.redirect("/login");
-  }
+  if (!req.session.user || req.session.user.role !== role) return res.redirect("/login");
   next();
 };
+
+const requireAnyRole = (roles) => (req, res, next) => {
+  if (!req.session.user || !roles.includes(req.session.user.role)) return res.redirect("/login");
+  next();
+};
+
+function isDuplicateEmailError(err) {
+  return err && (err.code === "23505" || String(err.message || "").includes("duplicate key"));
+}
+
+function randomPassword() {
+  return crypto.randomBytes(12).toString("base64url");
+}
 
 function safeTempPassword(input) {
   const v = String(input ?? "").trim();
   return v.length ? v : null;
 }
 
-// FIX: cryptographically-strong temp password (replaces Math.random)
-function randomPassword() {
-  // 16 chars URL-safe-ish
-  return crypto.randomBytes(12).toString("base64url");
+function slugifyFolder(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60) || "other";
 }
 
-function isDuplicateEmailError(err) {
-  return (
-    err &&
-    (err.code === "23505" ||
-      String(err.message || "").includes("duplicate key"))
-  );
-}
-
-// RAPIDS readiness: strict but practical.
-function rapidsReadiness(student) {
-  const required = [
-    "program_name",
-    "provider_program_id",
-    "program_system_id",
-    "student_id_no",
-    "student_id_type",
-    "enrollment_date",
-  ];
-
-  const missing = required.filter((k) => {
-    const v = student[k];
-    if (v === null || v === undefined) return true;
-    if (typeof v === "string" && v.trim() === "") return true;
-    return false;
-  });
-
-  if (missing.length === 0) return { label: "✅ Ready", code: "ready", missing };
-  if (missing.length <= 2) return { label: "⚠️ Nearly", code: "nearly", missing };
-  return { label: "❌ Incomplete", code: "incomplete", missing };
-}
-
-function cleanText(v) {
-  return String(v ?? "").trim();
+function safeFileName(name) {
+  const base = String(name || "file")
+    .replace(/[/\\?%*:|"<>]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  return base.length ? base : "file";
 }
 
 /* ===================== UPLOADS SETUP ===================== */
 /**
- * Render note:
- * - If you attach a persistent disk, set UPLOAD_DIR to that mount path.
- * - Example: /var/data/uploads
+ * Recommended for Render:
+ * - attach a persistent disk and set UPLOAD_DIR to that mount path
+ *   e.g. /var/data/uploads
  */
 const uploadDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
@@ -154,12 +145,29 @@ const uploadDir = process.env.UPLOAD_DIR
 
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+/**
+ * We store docs under:
+ * uploads/<entity_type>/<entity_id>/<category_slug>/<timestamp_rand_filename>
+ */
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir);
+    const ctx = req.uploadContext;
+    if (!ctx || !ctx.entityType || !ctx.entityId || !ctx.category) {
+      return cb(new Error("Upload context missing"));
+    }
+
+    const folder = path.join(
+      uploadDir,
+      ctx.entityType,
+      String(ctx.entityId),
+      slugifyFolder(ctx.category)
+    );
+
+    fs.mkdirSync(folder, { recursive: true });
+    cb(null, folder);
   },
   filename: function (req, file, cb) {
-    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const safe = safeFileName(file.originalname).replace(/[^a-zA-Z0-9._ -]+/g, "_");
     const rand = crypto.randomBytes(8).toString("hex");
     cb(null, `${Date.now()}_${rand}_${safe}`);
   },
@@ -184,26 +192,16 @@ app.post(
     const email = cleanEmail(req.body.email);
     const password = String(req.body.password || "");
 
-    const { rows } = await pool.query("SELECT * FROM users WHERE email=$1", [
-      email,
-    ]);
-
+    const { rows } = await pool.query("SELECT * FROM users WHERE email=$1", [email]);
     if (!rows.length || !bcrypt.compareSync(password, rows[0].password_hash)) {
-      return res.redirect(
-        "/login?msg=" + encodeURIComponent("Invalid email or password")
-      );
+      return res.redirect("/login?msg=" + encodeURIComponent("Invalid email or password"));
     }
 
-    req.session.user = {
-      id: rows[0].id,
-      email: rows[0].email,
-      role: rows[0].role,
-    };
+    req.session.user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
 
     if (rows[0].role === "admin") return res.redirect("/admin");
     if (rows[0].role === "student") return res.redirect("/student");
     if (rows[0].role === "employer") return res.redirect("/employer");
-
     return res.redirect("/login");
   })
 );
@@ -212,7 +210,7 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/login"));
 });
 
-/* ===================== REGISTER + RESET (FIXED LINKS) ===================== */
+/* ===================== REGISTER + RESET ===================== */
 app.get("/register", (req, res) => {
   res.render("register", { message: req.query.msg || null });
 });
@@ -225,9 +223,7 @@ app.post(
     const note = cleanText(req.body.note);
 
     if (!email || !["student", "employer"].includes(role)) {
-      return res.redirect(
-        "/register?msg=" + encodeURIComponent("Email and role are required.")
-      );
+      return res.redirect("/register?msg=" + encodeURIComponent("Email and role are required."));
     }
 
     await pool.query(
@@ -237,8 +233,7 @@ app.post(
     );
 
     return res.redirect(
-      "/login?msg=" +
-        encodeURIComponent("Request received. AEI will follow up if approved.")
+      "/login?msg=" + encodeURIComponent("Request received. AEI will follow up if approved.")
     );
   })
 );
@@ -254,9 +249,7 @@ app.post(
     const note = cleanText(req.body.note);
 
     if (!email) {
-      return res.redirect(
-        "/reset-password?msg=" + encodeURIComponent("Email is required.")
-      );
+      return res.redirect("/reset-password?msg=" + encodeURIComponent("Email is required."));
     }
 
     await pool.query(
@@ -265,10 +258,7 @@ app.post(
       [email, note]
     );
 
-    return res.redirect(
-      "/login?msg=" +
-        encodeURIComponent("Reset request received. AEI will follow up.")
-    );
+    return res.redirect("/login?msg=" + encodeURIComponent("Reset request received. AEI will follow up."));
   })
 );
 
@@ -291,29 +281,9 @@ app.get(
        ORDER BY e.id DESC`
     );
 
-    const docCounts = await pool.query(
-      `SELECT student_id, COUNT(*)::int AS cnt
-       FROM student_documents
-       GROUP BY student_id`
-    );
-
-    const docCountMap = new Map(
-      docCounts.rows.map((r) => [String(r.student_id), r.cnt])
-    );
-
-    const studentsWithIndicators = students.rows.map((s) => {
-      const r = rapidsReadiness(s);
-      return {
-        ...s,
-        rapids_label: r.label,
-        rapids_code: r.code,
-        docs_count: docCountMap.get(String(s.id)) || 0,
-      };
-    });
-
     res.render("admin", {
       user: req.session.user,
-      students: studentsWithIndicators,
+      students: students.rows,
       employers: employers.rows,
       LEVELS,
       STUDENT_STATUSES,
@@ -322,7 +292,6 @@ app.get(
   })
 );
 
-// FIX: Student page expects DOC_TYPES + documents + message
 app.get(
   "/student",
   requireRole("student"),
@@ -335,25 +304,47 @@ app.get(
     );
 
     if (!r.rows.length) {
-      return res.redirect(
-        "/login?msg=" + encodeURIComponent("Student profile not found. Contact AEI.")
-      );
+      return res.redirect("/login?msg=" + encodeURIComponent("Student profile not found. Contact AEI."));
     }
 
-    // For now: show empty list (next round: wire upload/download/delete)
-    const documents = [];
+    const student = r.rows[0];
+
+    const docs = await pool.query(
+      `SELECT d.*
+       FROM documents d
+       WHERE d.entity_type='student' AND d.entity_id=$1
+       ORDER BY d.created_at DESC`,
+      [student.id]
+    );
+
+    // group by category
+    const grouped = new Map();
+    for (const d of docs.rows) {
+      const key = d.category || "Other";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(d);
+    }
+
+    const groupedDocs = DOC_CATEGORIES
+      .filter((c) => grouped.has(c))
+      .map((c) => ({ category: c, docs: grouped.get(c) }))
+      .concat(
+        [...grouped.keys()]
+          .filter((k) => !DOC_CATEGORIES.includes(k))
+          .sort()
+          .map((k) => ({ category: k, docs: grouped.get(k) }))
+      );
 
     res.render("student", {
       user: req.session.user,
-      student: r.rows[0],
-      DOC_TYPES,
-      documents,
+      student,
+      DOC_CATEGORIES,
+      groupedDocs,
       message: req.query.msg || null,
     });
   })
 );
 
-// FIX: Employer page expects DOC_TYPES + documents + message
 app.get(
   "/employer",
   requireRole("employer"),
@@ -366,20 +357,230 @@ app.get(
     );
 
     if (!r.rows.length) {
-      return res.redirect(
-        "/login?msg=" + encodeURIComponent("Employer profile not found. Contact AEI.")
-      );
+      return res.redirect("/login?msg=" + encodeURIComponent("Employer profile not found. Contact AEI."));
     }
 
-    const documents = [];
+    const employer = r.rows[0];
+
+    const docs = await pool.query(
+      `SELECT d.*
+       FROM documents d
+       WHERE d.entity_type='employer' AND d.entity_id=$1
+       ORDER BY d.created_at DESC`,
+      [employer.id]
+    );
+
+    const grouped = new Map();
+    for (const d of docs.rows) {
+      const key = d.category || "Other";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(d);
+    }
+
+    const groupedDocs = DOC_CATEGORIES
+      .filter((c) => grouped.has(c))
+      .map((c) => ({ category: c, docs: grouped.get(c) }))
+      .concat(
+        [...grouped.keys()]
+          .filter((k) => !DOC_CATEGORIES.includes(k))
+          .sort()
+          .map((k) => ({ category: k, docs: grouped.get(k) }))
+      );
 
     res.render("employer", {
       user: req.session.user,
-      employer: r.rows[0],
-      DOC_TYPES,
-      documents,
+      employer,
+      DOC_CATEGORIES,
+      groupedDocs,
       message: req.query.msg || null,
     });
+  })
+);
+
+/* ===================== STUDENT UPLOAD/DOWNLOAD ===================== */
+app.post(
+  "/student/documents/upload",
+  requireRole("student"),
+  wrap(async (req, res, next) => {
+    // Resolve student
+    const r = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [req.session.user.id]);
+    if (!r.rows.length) return res.redirect("/student?msg=" + encodeURIComponent("Student profile not found."));
+
+    const studentId = r.rows[0].id;
+
+    const category = cleanText(req.body.category);
+    if (!category) return res.redirect("/student?msg=" + encodeURIComponent("Category is required."));
+
+    // Provide context to multer destination
+    req.uploadContext = { entityType: "student", entityId: studentId, category };
+    upload.single("file")(req, res, async (err) => {
+      if (err) return next(err);
+      if (!req.file) return res.redirect("/student?msg=" + encodeURIComponent("No file selected."));
+
+      const title = cleanText(req.body.title);
+
+      // rel path from uploads root
+      const relPath = path.relative(uploadDir, req.file.path).replace(/\\/g, "/");
+
+      await pool.query(
+        `INSERT INTO documents
+         (entity_type, entity_id, category, title, original_filename, stored_rel_path, mime_type, file_size_bytes, uploaded_by_user_id)
+         VALUES ('student',$1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          studentId,
+          category,
+          title || req.file.originalname,
+          req.file.originalname,
+          relPath,
+          req.file.mimetype || "application/octet-stream",
+          Number(req.file.size || 0),
+          req.session.user.id,
+        ]
+      );
+
+      return res.redirect("/student?msg=" + encodeURIComponent("Document uploaded."));
+    });
+  })
+);
+
+app.get(
+  "/student/documents/download-all",
+  requireRole("student"),
+  wrap(async (req, res) => {
+    const r = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [req.session.user.id]);
+    if (!r.rows.length) return res.redirect("/student?msg=" + encodeURIComponent("Student profile not found."));
+    const studentId = r.rows[0].id;
+
+    const docs = await pool.query(
+      `SELECT * FROM documents WHERE entity_type='student' AND entity_id=$1 ORDER BY created_at DESC`,
+      [studentId]
+    );
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="student_documents_${studentId}.zip"`);
+
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("error", (err) => { throw err; });
+    archive.pipe(res);
+
+    for (const d of docs.rows) {
+      const filePath = path.join(uploadDir, d.stored_rel_path);
+      if (!fs.existsSync(filePath)) continue;
+
+      const folder = slugifyFolder(d.category || "Other");
+      const fileName = safeFileName(d.title || d.original_filename || "file");
+      archive.file(filePath, { name: `${folder}/${fileName}` });
+    }
+
+    await archive.finalize();
+  })
+);
+
+/* ===================== EMPLOYER UPLOAD/DOWNLOAD ===================== */
+app.post(
+  "/employer/documents/upload",
+  requireRole("employer"),
+  wrap(async (req, res, next) => {
+    const r = await pool.query(`SELECT id FROM employers WHERE user_id=$1`, [req.session.user.id]);
+    if (!r.rows.length) return res.redirect("/employer?msg=" + encodeURIComponent("Employer profile not found."));
+
+    const employerId = r.rows[0].id;
+
+    const category = cleanText(req.body.category);
+    if (!category) return res.redirect("/employer?msg=" + encodeURIComponent("Category is required."));
+
+    req.uploadContext = { entityType: "employer", entityId: employerId, category };
+    upload.single("file")(req, res, async (err) => {
+      if (err) return next(err);
+      if (!req.file) return res.redirect("/employer?msg=" + encodeURIComponent("No file selected."));
+
+      const title = cleanText(req.body.title);
+      const relPath = path.relative(uploadDir, req.file.path).replace(/\\/g, "/");
+
+      await pool.query(
+        `INSERT INTO documents
+         (entity_type, entity_id, category, title, original_filename, stored_rel_path, mime_type, file_size_bytes, uploaded_by_user_id)
+         VALUES ('employer',$1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          employerId,
+          category,
+          title || req.file.originalname,
+          req.file.originalname,
+          relPath,
+          req.file.mimetype || "application/octet-stream",
+          Number(req.file.size || 0),
+          req.session.user.id,
+        ]
+      );
+
+      return res.redirect("/employer?msg=" + encodeURIComponent("Document uploaded."));
+    });
+  })
+);
+
+app.get(
+  "/employer/documents/download-all",
+  requireRole("employer"),
+  wrap(async (req, res) => {
+    const r = await pool.query(`SELECT id FROM employers WHERE user_id=$1`, [req.session.user.id]);
+    if (!r.rows.length) return res.redirect("/employer?msg=" + encodeURIComponent("Employer profile not found."));
+    const employerId = r.rows[0].id;
+
+    const docs = await pool.query(
+      `SELECT * FROM documents WHERE entity_type='employer' AND entity_id=$1 ORDER BY created_at DESC`,
+      [employerId]
+    );
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="employer_documents_${employerId}.zip"`);
+
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("error", (err) => { throw err; });
+    archive.pipe(res);
+
+    for (const d of docs.rows) {
+      const filePath = path.join(uploadDir, d.stored_rel_path);
+      if (!fs.existsSync(filePath)) continue;
+
+      const folder = slugifyFolder(d.category || "Other");
+      const fileName = safeFileName(d.title || d.original_filename || "file");
+      archive.file(filePath, { name: `${folder}/${fileName}` });
+    }
+
+    await archive.finalize();
+  })
+);
+
+/* ===================== SINGLE DOCUMENT DOWNLOAD (ROLE-SAFE) ===================== */
+app.get(
+  "/documents/:docId/download",
+  requireAnyRole(["admin", "student", "employer"]),
+  wrap(async (req, res) => {
+    const docId = Number(req.params.docId);
+    const d = await pool.query(`SELECT * FROM documents WHERE id=$1`, [docId]);
+    if (!d.rows.length) return res.status(404).send("Not found");
+    const doc = d.rows[0];
+
+    // Access control:
+    if (req.session.user.role !== "admin") {
+      if (req.session.user.role === "student") {
+        const s = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [req.session.user.id]);
+        if (!s.rows.length || doc.entity_type !== "student" || Number(doc.entity_id) !== Number(s.rows[0].id)) {
+          return res.status(403).send("Forbidden");
+        }
+      } else if (req.session.user.role === "employer") {
+        const e = await pool.query(`SELECT id FROM employers WHERE user_id=$1`, [req.session.user.id]);
+        if (!e.rows.length || doc.entity_type !== "employer" || Number(doc.entity_id) !== Number(e.rows[0].id)) {
+          return res.status(403).send("Forbidden");
+        }
+      }
+    }
+
+    const filePath = path.join(uploadDir, doc.stored_rel_path);
+    if (!fs.existsSync(filePath)) return res.status(404).send("File missing");
+
+    res.setHeader("Content-Disposition", `attachment; filename="${safeFileName(doc.original_filename)}"`);
+    return res.download(filePath);
   })
 );
 
@@ -399,14 +600,12 @@ async function createUser({ email, role, tempPasswordInput }) {
   return { userId: user.rows[0].id, password };
 }
 
-// CREATE STUDENT
 app.post(
   "/admin/students/create",
   requireRole("admin"),
   wrap(async (req, res) => {
     const email = cleanEmail(req.body.email);
-    if (!email)
-      return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
+    if (!email) return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
 
     try {
       const { userId, password } = await createUser({
@@ -414,32 +613,22 @@ app.post(
         role: "student",
         tempPasswordInput: req.body.temp_password,
       });
-
       await pool.query(`INSERT INTO students (user_id) VALUES ($1)`, [userId]);
 
-      return res.redirect(
-        "/admin?msg=" +
-          encodeURIComponent(`Student created. Temp password: ${password}`)
-      );
+      return res.redirect("/admin?msg=" + encodeURIComponent(`Student created. Temp password: ${password}`));
     } catch (e) {
-      if (isDuplicateEmailError(e)) {
-        return res.redirect(
-          "/admin?msg=" + encodeURIComponent("Email already exists")
-        );
-      }
+      if (isDuplicateEmailError(e)) return res.redirect("/admin?msg=" + encodeURIComponent("Email already exists"));
       throw e;
     }
   })
 );
 
-// CREATE EMPLOYER
 app.post(
   "/admin/employers/create",
   requireRole("admin"),
   wrap(async (req, res) => {
     const email = cleanEmail(req.body.email);
-    if (!email)
-      return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
+    if (!email) return res.redirect("/admin?msg=" + encodeURIComponent("Email required"));
 
     try {
       const { userId, password } = await createUser({
@@ -447,25 +636,17 @@ app.post(
         role: "employer",
         tempPasswordInput: req.body.temp_password,
       });
-
       await pool.query(`INSERT INTO employers (user_id) VALUES ($1)`, [userId]);
 
-      return res.redirect(
-        "/admin?msg=" +
-          encodeURIComponent(`Employer created. Temp password: ${password}`)
-      );
+      return res.redirect("/admin?msg=" + encodeURIComponent(`Employer created. Temp password: ${password}`));
     } catch (e) {
-      if (isDuplicateEmailError(e)) {
-        return res.redirect(
-          "/admin?msg=" + encodeURIComponent("Email already exists")
-        );
-      }
+      if (isDuplicateEmailError(e)) return res.redirect("/admin?msg=" + encodeURIComponent("Email already exists"));
       throw e;
     }
   })
 );
 
-/* ===================== ADMIN: STUDENT DETAIL ===================== */
+/* ===================== ADMIN: STUDENT DETAIL + DOCS ===================== */
 app.get(
   "/admin/students/:id",
   requireRole("admin"),
@@ -479,30 +660,43 @@ app.get(
        WHERE s.id = $1`,
       [studentId]
     );
-
-    if (!s.rows.length) {
-      return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
-    }
+    if (!s.rows.length) return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
 
     const docs = await pool.query(
       `SELECT d.*, u.email AS uploader_email
-       FROM student_documents d
+       FROM documents d
        LEFT JOIN users u ON u.id = d.uploaded_by_user_id
-       WHERE d.student_id = $1
+       WHERE d.entity_type='student' AND d.entity_id=$1
        ORDER BY d.created_at DESC`,
       [studentId]
     );
 
-    const readiness = rapidsReadiness(s.rows[0]);
+    // Group for display
+    const grouped = new Map();
+    for (const d of docs.rows) {
+      const key = d.category || "Other";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(d);
+    }
+
+    const groupedDocs = DOC_CATEGORIES
+      .filter((c) => grouped.has(c))
+      .map((c) => ({ category: c, docs: grouped.get(c) }))
+      .concat(
+        [...grouped.keys()]
+          .filter((k) => !DOC_CATEGORIES.includes(k))
+          .sort()
+          .map((k) => ({ category: k, docs: grouped.get(k) }))
+      );
 
     res.render("admin-student", {
       user: req.session.user,
       student: s.rows[0],
       docs: docs.rows,
-      readiness,
+      groupedDocs,
+      DOC_CATEGORIES,
       LEVELS,
       STUDENT_STATUSES,
-      DOC_TYPES,
       STUDENT_ID_TYPES,
       message: req.query.msg || null,
     });
@@ -510,172 +704,81 @@ app.get(
 );
 
 app.post(
-  "/admin/students/:id/update-identity",
-  requireRole("admin"),
-  wrap(async (req, res) => {
-    const studentId = Number(req.params.id);
-
-    await pool.query(
-      `UPDATE students
-       SET first_name=$1, last_name=$2, phone=$3, employer_name=$4, level=$5, status=$6
-       WHERE id=$7`,
-      [
-        cleanText(req.body.first_name),
-        cleanText(req.body.last_name),
-        cleanText(req.body.phone),
-        cleanText(req.body.employer_name),
-        Number(req.body.level || 1),
-        cleanText(req.body.status),
-        studentId,
-      ]
-    );
-
-    return res.redirect(
-      `/admin/students/${studentId}?msg=` +
-        encodeURIComponent("Identity / Progress updated")
-    );
-  })
-);
-
-app.post(
-  "/admin/students/:id/update-rapids",
-  requireRole("admin"),
-  wrap(async (req, res) => {
-    const studentId = Number(req.params.id);
-
-    const enrollmentDate = req.body.enrollment_date ? req.body.enrollment_date : null;
-    const exitDate = req.body.exit_date ? req.body.exit_date : null;
-
-    await pool.query(
-      `UPDATE students
-       SET program_name=$1,
-           provider_program_id=$2,
-           program_system_id=$3,
-           student_id_no=$4,
-           student_id_type=$5,
-           enrollment_date=$6,
-           exit_date=$7,
-           exit_type=$8,
-           credential=$9
-       WHERE id=$10`,
-      [
-        cleanText(req.body.program_name),
-        cleanText(req.body.provider_program_id),
-        cleanText(req.body.program_system_id),
-        cleanText(req.body.student_id_no),
-        cleanText(req.body.student_id_type),
-        enrollmentDate,
-        exitDate,
-        cleanText(req.body.exit_type),
-        cleanText(req.body.credential),
-        studentId,
-      ]
-    );
-
-    return res.redirect(
-      `/admin/students/${studentId}?msg=` +
-        encodeURIComponent("RAPIDS fields updated")
-    );
-  })
-);
-
-// ADMIN upload/download only (student/employer vault wiring is next round)
-app.post(
   "/admin/students/:id/docs/upload",
   requireRole("admin"),
-  upload.single("doc_file"),
-  wrap(async (req, res) => {
+  wrap(async (req, res, next) => {
     const studentId = Number(req.params.id);
 
-    if (!req.file) {
-      return res.redirect(
-        `/admin/students/${studentId}?msg=` +
-          encodeURIComponent("No file selected")
-      );
+    const category = cleanText(req.body.category);
+    if (!category) {
+      return res.redirect(`/admin/students/${studentId}?msg=` + encodeURIComponent("Category is required."));
     }
 
-    const docType = cleanText(req.body.doc_type);
-    const title = cleanText(req.body.title);
+    req.uploadContext = { entityType: "student", entityId: studentId, category };
+    upload.single("file")(req, res, async (err) => {
+      if (err) return next(err);
+      if (!req.file) return res.redirect(`/admin/students/${studentId}?msg=` + encodeURIComponent("No file selected."));
 
-    await pool.query(
-      `INSERT INTO student_documents
-       (student_id, uploaded_by_user_id, doc_type, title, original_filename, stored_filename, mime_type, file_size_bytes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [
-        studentId,
-        req.session.user.id,
-        docType || "Other",
-        title || req.file.originalname,
-        req.file.originalname,
-        req.file.filename,
-        req.file.mimetype || "application/octet-stream",
-        Number(req.file.size || 0),
-      ]
-    );
+      const title = cleanText(req.body.title);
+      const relPath = path.relative(uploadDir, req.file.path).replace(/\\/g, "/");
 
-    return res.redirect(
-      `/admin/students/${studentId}?msg=` +
-        encodeURIComponent("Document uploaded")
-    );
+      await pool.query(
+        `INSERT INTO documents
+         (entity_type, entity_id, category, title, original_filename, stored_rel_path, mime_type, file_size_bytes, uploaded_by_user_id)
+         VALUES ('student',$1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          studentId,
+          category,
+          title || req.file.originalname,
+          req.file.originalname,
+          relPath,
+          req.file.mimetype || "application/octet-stream",
+          Number(req.file.size || 0),
+          req.session.user.id,
+        ]
+      );
+
+      return res.redirect(`/admin/students/${studentId}?msg=` + encodeURIComponent("Document uploaded."));
+    });
   })
 );
 
 app.get(
-  "/admin/docs/:docId/download",
-  requireRole("admin"),
-  wrap(async (req, res) => {
-    const docId = Number(req.params.docId);
-
-    const d = await pool.query(`SELECT * FROM student_documents WHERE id=$1`, [docId]);
-    if (!d.rows.length) return res.status(404).send("Not found");
-
-    const doc = d.rows[0];
-    const filePath = path.join(uploadDir, doc.stored_filename);
-    if (!fs.existsSync(filePath)) return res.status(404).send("File missing");
-
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${doc.original_filename.replace(/"/g, "")}"`
-    );
-    return res.download(filePath);
-  })
-);
-
-/* ===================== ADMIN DELETE ===================== */
-app.post(
-  "/admin/students/:id/delete",
+  "/admin/students/:id/docs/download-all",
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
 
-    const s = await pool.query(`SELECT user_id FROM students WHERE id=$1`, [studentId]);
-    if (!s.rows.length) {
-      return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
+    const docs = await pool.query(
+      `SELECT * FROM documents WHERE entity_type='student' AND entity_id=$1 ORDER BY created_at DESC`,
+      [studentId]
+    );
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="student_${studentId}_documents.zip"`);
+
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("error", (err) => { throw err; });
+    archive.pipe(res);
+
+    for (const d of docs.rows) {
+      const filePath = path.join(uploadDir, d.stored_rel_path);
+      if (!fs.existsSync(filePath)) continue;
+
+      const folder = slugifyFolder(d.category || "Other");
+      const fileName = safeFileName(d.title || d.original_filename || "file");
+      archive.file(filePath, { name: `${folder}/${fileName}` });
     }
 
-    const userId = s.rows[0].user_id;
-    await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
-
-    return res.redirect("/admin?msg=" + encodeURIComponent("Student deleted"));
+    await archive.finalize();
   })
 );
 
+/* ===================== STUDENT UPDATE (stub so form never 404s) ===================== */
 app.post(
-  "/admin/employers/:id/delete",
-  requireRole("admin"),
-  wrap(async (req, res) => {
-    const employerId = Number(req.params.id);
-
-    const e = await pool.query(`SELECT user_id FROM employers WHERE id=$1`, [employerId]);
-    if (!e.rows.length) {
-      return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
-    }
-
-    const userId = e.rows[0].user_id;
-    await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
-
-    return res.redirect("/admin?msg=" + encodeURIComponent("Employer deleted"));
-  })
+  "/student/update",
+  requireRole("student"),
+  (req, res) => res.redirect("/student?msg=" + encodeURIComponent("Profile edits are managed by AEI administration."))
 );
 
 /* ===================== ERROR HANDLER ===================== */
@@ -687,16 +790,4 @@ app.use((err, req, res, next) => {
 /* ===================== START ===================== */
 app.listen(PORT, () => {
   console.log(`🚀 AEI portal running on port ${PORT}`);
-});
-
-/* ===================== ROUTE LIST ===================== */
-app.get("/__routes", (req, res) => {
-  res.json(
-    app._router.stack
-      .filter((r) => r.route)
-      .map(
-        (r) =>
-          Object.keys(r.route.methods)[0].toUpperCase() + " " + r.route.path
-      )
-  );
 });
