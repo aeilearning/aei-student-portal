@@ -101,6 +101,17 @@ input, select, button {
 
 input::placeholder { color: rgba(234,240,255,0.35); }
 
+/* FIX: dropdown contrast (no more white text on white menu) */
+select {
+  background: #ffffff;
+  color: #111111;
+  border-color: rgba(255,255,255,0.35);
+}
+select option {
+  background: #ffffff;
+  color: #111111;
+}
+
 button {
   cursor: pointer;
   background: rgba(80,140,255,0.22);
