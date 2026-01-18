@@ -11,6 +11,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "bcryptjs": "^2.4.3",
     "csv-stringify": "^6.5.0",
     "ejs": "^3.1.9",
