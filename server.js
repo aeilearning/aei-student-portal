@@ -1,11 +1,11 @@
 // server.js — Admin + Student Detail + Document Vault + RAPIDS Readiness
-
 const express = require("express");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
+const crypto = require("crypto");
 const { pool, initDb } = require("./db");
 
 const app = express();
@@ -63,9 +63,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+// SECURITY: In production, require a real SESSION_SECRET (do NOT silently use dev-secret)
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (isProduction && (!SESSION_SECRET || SESSION_SECRET.trim().length < 20)) {
+  console.error("❌ SESSION_SECRET missing/too short in production. Set it in Render Environment.");
+  process.exit(1);
+}
+
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "dev-secret",
+    secret: SESSION_SECRET || "dev-secret",
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -94,10 +101,10 @@ function safeTempPassword(input) {
   return v.length ? v : null;
 }
 
+// FIX: cryptographically-strong temp password (replaces Math.random)
 function randomPassword() {
-  return (
-    Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2, 6)
-  );
+  // 16 chars URL-safe-ish
+  return crypto.randomBytes(12).toString("base64url");
 }
 
 function isDuplicateEmailError(err) {
@@ -109,7 +116,6 @@ function isDuplicateEmailError(err) {
 }
 
 // RAPIDS readiness: strict but practical.
-// You can tighten later based on exact required export columns.
 function rapidsReadiness(student) {
   const required = [
     "program_name",
@@ -137,7 +143,15 @@ function cleanText(v) {
 }
 
 /* ===================== UPLOADS SETUP ===================== */
-const uploadDir = path.join(__dirname, "uploads");
+/**
+ * Render note:
+ * - If you attach a persistent disk, set UPLOAD_DIR to that mount path.
+ * - Example: /var/data/uploads
+ */
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(__dirname, "uploads");
+
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -146,7 +160,8 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const safe = file.originalname.replace(/[^a-zA-Z0-9._-]+/g, "_");
-    cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
+    const rand = crypto.randomBytes(8).toString("hex");
+    cb(null, `${Date.now()}_${rand}_${safe}`);
   },
 });
 
@@ -197,12 +212,71 @@ app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/login"));
 });
 
+/* ===================== REGISTER + RESET (FIXED LINKS) ===================== */
+app.get("/register", (req, res) => {
+  res.render("register", { message: req.query.msg || null });
+});
+
+app.post(
+  "/register",
+  wrap(async (req, res) => {
+    const email = cleanEmail(req.body.email);
+    const role = cleanText(req.body.role); // student/employer
+    const note = cleanText(req.body.note);
+
+    if (!email || !["student", "employer"].includes(role)) {
+      return res.redirect(
+        "/register?msg=" + encodeURIComponent("Email and role are required.")
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO access_requests (request_type, email, requested_role, note)
+       VALUES ('register', $1, $2, $3)`,
+      [email, role, note]
+    );
+
+    return res.redirect(
+      "/login?msg=" +
+        encodeURIComponent("Request received. AEI will follow up if approved.")
+    );
+  })
+);
+
+app.get("/reset-password", (req, res) => {
+  res.render("reset-password", { message: req.query.msg || null });
+});
+
+app.post(
+  "/reset-password",
+  wrap(async (req, res) => {
+    const email = cleanEmail(req.body.email);
+    const note = cleanText(req.body.note);
+
+    if (!email) {
+      return res.redirect(
+        "/reset-password?msg=" + encodeURIComponent("Email is required.")
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO access_requests (request_type, email, requested_role, note)
+       VALUES ('reset_password', $1, '', $2)`,
+      [email, note]
+    );
+
+    return res.redirect(
+      "/login?msg=" +
+        encodeURIComponent("Reset request received. AEI will follow up.")
+    );
+  })
+);
+
 /* ===================== DASHBOARDS ===================== */
 app.get(
   "/admin",
   requireRole("admin"),
   wrap(async (req, res) => {
-    // Slim list only (no clutter)
     const students = await pool.query(
       `SELECT s.*, u.email
        FROM students s
@@ -217,14 +291,15 @@ app.get(
        ORDER BY e.id DESC`
     );
 
-    // Doc counts for quick view
     const docCounts = await pool.query(
       `SELECT student_id, COUNT(*)::int AS cnt
        FROM student_documents
        GROUP BY student_id`
     );
 
-    const docCountMap = new Map(docCounts.rows.map((r) => [String(r.student_id), r.cnt]));
+    const docCountMap = new Map(
+      docCounts.rows.map((r) => [String(r.student_id), r.cnt])
+    );
 
     const studentsWithIndicators = students.rows.map((s) => {
       const r = rapidsReadiness(s);
@@ -247,6 +322,7 @@ app.get(
   })
 );
 
+// FIX: Student page expects DOC_TYPES + documents + message
 app.get(
   "/student",
   requireRole("student"),
@@ -258,13 +334,26 @@ app.get(
       [req.session.user.id]
     );
 
+    if (!r.rows.length) {
+      return res.redirect(
+        "/login?msg=" + encodeURIComponent("Student profile not found. Contact AEI.")
+      );
+    }
+
+    // For now: show empty list (next round: wire upload/download/delete)
+    const documents = [];
+
     res.render("student", {
       user: req.session.user,
       student: r.rows[0],
+      DOC_TYPES,
+      documents,
+      message: req.query.msg || null,
     });
   })
 );
 
+// FIX: Employer page expects DOC_TYPES + documents + message
 app.get(
   "/employer",
   requireRole("employer"),
@@ -276,9 +365,20 @@ app.get(
       [req.session.user.id]
     );
 
+    if (!r.rows.length) {
+      return res.redirect(
+        "/login?msg=" + encodeURIComponent("Employer profile not found. Contact AEI.")
+      );
+    }
+
+    const documents = [];
+
     res.render("employer", {
       user: req.session.user,
       employer: r.rows[0],
+      DOC_TYPES,
+      documents,
+      message: req.query.msg || null,
     });
   })
 );
@@ -409,7 +509,6 @@ app.get(
   })
 );
 
-// UPDATE STUDENT IDENTITY + BASIC PROGRESS
 app.post(
   "/admin/students/:id/update-identity",
   requireRole("admin"),
@@ -438,16 +537,13 @@ app.post(
   })
 );
 
-// UPDATE RAPIDS FIELDS
 app.post(
   "/admin/students/:id/update-rapids",
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
 
-    const enrollmentDate = req.body.enrollment_date
-      ? req.body.enrollment_date
-      : null;
+    const enrollmentDate = req.body.enrollment_date ? req.body.enrollment_date : null;
     const exitDate = req.body.exit_date ? req.body.exit_date : null;
 
     await pool.query(
@@ -483,7 +579,7 @@ app.post(
   })
 );
 
-// UPLOAD DOCUMENT (Admin-only this revision)
+// ADMIN upload/download only (student/employer vault wiring is next round)
 app.post(
   "/admin/students/:id/docs/upload",
   requireRole("admin"),
@@ -524,23 +620,17 @@ app.post(
   })
 );
 
-// DOWNLOAD DOCUMENT (Admin-only this revision)
 app.get(
   "/admin/docs/:docId/download",
   requireRole("admin"),
   wrap(async (req, res) => {
     const docId = Number(req.params.docId);
 
-    const d = await pool.query(
-      `SELECT * FROM student_documents WHERE id=$1`,
-      [docId]
-    );
-
+    const d = await pool.query(`SELECT * FROM student_documents WHERE id=$1`, [docId]);
     if (!d.rows.length) return res.status(404).send("Not found");
 
     const doc = d.rows[0];
     const filePath = path.join(uploadDir, doc.stored_filename);
-
     if (!fs.existsSync(filePath)) return res.status(404).send("File missing");
 
     res.setHeader(
@@ -558,13 +648,12 @@ app.post(
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
 
-    // deletes student row; cascades to user and docs via FK cascade on students? docs cascade on student_id.
-    // user cascade is via students.user_id unique reference + ON DELETE CASCADE in students, but we delete student first here.
     const s = await pool.query(`SELECT user_id FROM students WHERE id=$1`, [studentId]);
-    if (!s.rows.length) return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
+    if (!s.rows.length) {
+      return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
+    }
 
     const userId = s.rows[0].user_id;
-
     await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
 
     return res.redirect("/admin?msg=" + encodeURIComponent("Student deleted"));
@@ -578,10 +667,11 @@ app.post(
     const employerId = Number(req.params.id);
 
     const e = await pool.query(`SELECT user_id FROM employers WHERE id=$1`, [employerId]);
-    if (!e.rows.length) return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
+    if (!e.rows.length) {
+      return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
+    }
 
     const userId = e.rows[0].user_id;
-
     await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
 
     return res.redirect("/admin?msg=" + encodeURIComponent("Employer deleted"));
