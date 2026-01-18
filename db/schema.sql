@@ -1,4 +1,6 @@
--- USERS: admin, student, employer
+-- AEI Student Portal schema (reference)
+-- NOTE: Runtime schema is applied by db.js initDb()
+
 create table if not exists users (
   id bigserial primary key,
   email text not null unique,
@@ -9,13 +11,16 @@ create table if not exists users (
 
 create table if not exists students (
   id bigserial primary key,
-  user_id bigint not null unique references users(id) on delete cascade,
-  first_name text not null default '',
-  last_name text not null default '',
-  phone text not null default '',
-  employer_name text not null default '',
-  level int not null default 1,
-  status text not null default 'Pending Enrollment',
+  user_id bigint unique references users(id) on delete cascade,
+
+  first_name text default '',
+  last_name text default '',
+  phone text default '',
+  employer_name text default '',
+  level int default 1,
+  status text default 'Pending Enrollment',
+
+  -- RAPIDS fields
   program_name text,
   provider_program_id text,
   program_system_id text,
@@ -25,15 +30,16 @@ create table if not exists students (
   exit_date date,
   exit_type text,
   credential text,
+
   created_at timestamptz not null default now()
 );
 
 create table if not exists employers (
   id bigserial primary key,
-  user_id bigint not null unique references users(id) on delete cascade,
-  company_name text not null default '',
-  contact_name text not null default '',
-  phone text not null default '',
+  user_id bigint unique references users(id) on delete cascade,
+  company_name text default '',
+  contact_name text default '',
+  phone text default '',
   created_at timestamptz not null default now()
 );
 
