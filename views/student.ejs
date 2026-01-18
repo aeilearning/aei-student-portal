@@ -2,15 +2,15 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>AEI Student Portal</title>
+  <title>AEI Student</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body class="container">
 
   <div class="topbar">
     <div>
-      <h1>Student Portal</h1>
-      <div class="muted">Signed in as <b><%= user.email %></b></div>
+      <h1>Student Dashboard</h1>
+      <div class="muted">Logged in as <b><%= user.email %></b></div>
     </div>
     <a class="link" href="/logout">Logout</a>
   </div>
@@ -20,117 +20,51 @@
   <% } %>
 
   <div class="card">
-    <h2>Your Status</h2>
+    <h2>Profile</h2>
     <div class="grid2">
-      <div>
-        <div class="muted small">Current Status</div>
-        <div class="pill"><%= student.status %></div>
-      </div>
-      <div>
-        <div class="muted small">Current Level</div>
-        <div class="pill">Level <%= student.level %></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Your Information</h2>
-
-    <form method="POST" action="/student/update" class="grid2">
       <div class="stack">
-        <label>Email (read only)</label>
-        <input value="<%= user.email %>" disabled />
-      </div>
-
-      <div class="stack">
-        <label>First Name</label>
-        <input value="<%= student.first_name || '' %>" disabled />
-      </div>
-
-      <div class="stack">
-        <label>Last Name</label>
-        <input value="<%= student.last_name || '' %>" disabled />
+        <label>Name</label>
+        <div class="muted"><%= (student.first_name || '') %> <%= (student.last_name || '') %></div>
       </div>
 
       <div class="stack">
         <label>Phone</label>
-        <input value="<%= student.phone || '' %>" disabled />
+        <div class="muted"><%= student.phone || '' %></div>
       </div>
 
       <div class="stack">
         <label>Employer</label>
-        <input value="<%= student.employer_name || '' %>" disabled />
+        <div class="muted"><%= student.employer_name || '' %></div>
       </div>
 
-      <div class="muted small">
-        Profile edits are managed by AEI administration for compliance.
+      <div class="stack">
+        <label>Level</label>
+        <div class="muted"><%= student.level %></div>
       </div>
-    </form>
-  </div>
 
-  <div class="card">
-    <div class="row-between">
-      <div>
-        <h2>Document Vault</h2>
-        <p class="muted small">
-          Upload documents into a required category so AEI can find them quickly (even if filenames are junk).
-          You can upload and download — no deletions from your side.
-        </p>
-      </div>
-      <div class="right">
-        <a class="btn" href="/student/documents/download-all">Download All (ZIP)</a>
+      <div class="stack">
+        <label>Status</label>
+        <div class="muted"><%= student.status || '' %></div>
       </div>
     </div>
 
-    <form method="POST" action="/student/documents/upload" enctype="multipart/form-data" class="grid2">
-      <div class="stack">
-        <label>Category (required)</label>
-        <select name="category" required>
-          <% DOC_CATEGORIES.forEach(c => { %>
-            <option value="<%= c %>"><%= c %></option>
-          <% }) %>
-        </select>
+    <div class="muted small" style="margin-top:10px;">
+      Student self-service editing and uploads are coming next. For now, admin manages changes and document uploads.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Documents</h2>
+    <div class="muted">
+      Student document vault isn’t wired yet for student accounts. Admin can upload documents on your behalf.
+    </div>
+
+    <% if (documents && documents.length) { %>
+      <div style="margin-top:10px;" class="muted small">
+        (You have <%= documents.length %> document(s) queued to display, but student download routes aren’t enabled yet.)
       </div>
-
-      <div class="stack">
-        <label>Title (optional but recommended)</label>
-        <input name="title" placeholder="Example: 2026 Apprentice Card (CO)" />
-      </div>
-
-      <div class="stack">
-        <label>File</label>
-        <input type="file" name="file" required />
-      </div>
-
-      <div>
-        <button>Upload Document</button>
-      </div>
-    </form>
-
-    <hr />
-
-    <% if (!groupedDocs || !groupedDocs.length) { %>
-      <div class="muted small">No documents uploaded yet.</div>
     <% } else { %>
-      <% groupedDocs.forEach(group => { %>
-        <h3><%= group.category %> (<%= group.docs.length %>)</h3>
-        <table>
-          <tr>
-            <th>Title</th>
-            <th>Original Filename</th>
-            <th>Uploaded</th>
-            <th>Download</th>
-          </tr>
-          <% group.docs.forEach(d => { %>
-            <tr>
-              <td><%= d.title || d.original_filename %></td>
-              <td class="small"><%= d.original_filename %></td>
-              <td class="small"><%= new Date(d.created_at).toLocaleString() %></td>
-              <td><a class="btn" href="/documents/<%= d.id %>/download">Download</a></td>
-            </tr>
-          <% }) %>
-        </table>
-      <% }) %>
+      <div class="muted small" style="margin-top:10px;">No documents available yet.</div>
     <% } %>
   </div>
 
