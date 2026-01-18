@@ -1,11 +1,11 @@
-// db.js
 const { Pool } = require("pg");
-
-const isProduction = process.env.NODE_ENV === "production";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: isProduction ? { rejectUnauthorized: false } : false,
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
 });
 
 async function initDb() {
@@ -74,52 +74,85 @@ async function initDb() {
     );
   `);
 
-  // DOCUMENT VAULT (Admin uploads for students in this revision)
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS student_documents (
-      id BIGSERIAL PRIMARY KEY,
-      student_id BIGINT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-      uploaded_by_user_id BIGINT REFERENCES users(id),
-
-      doc_type TEXT NOT NULL,
-      title TEXT NOT NULL DEFAULT '',
-
-      original_filename TEXT NOT NULL,
-      stored_filename TEXT NOT NULL,
-      mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
-      file_size_bytes BIGINT NOT NULL DEFAULT 0,
-
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-
-  // INTAKE REQUESTS (used by /register and /reset-password)
+  // ACCESS REQUESTS (register + reset-password)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS access_requests (
       id BIGSERIAL PRIMARY KEY,
       request_type TEXT NOT NULL CHECK (request_type IN ('register','reset_password')),
       email TEXT NOT NULL,
-      requested_role TEXT NOT NULL DEFAULT '' CHECK (requested_role IN ('','student','employer')),
+      requested_role TEXT NOT NULL DEFAULT '',
       note TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','in_progress','done','rejected')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
 
-  // Indexes (Postgres does NOT auto-index FKs)
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_employers_user_id ON employers(user_id);`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_status_history_student_id ON student_status_history(student_id);`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_student_documents_student_id ON student_documents(student_id);`);
+  // DOCUMENT VAULT (student/employer)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS documents (
+      id BIGSERIAL PRIMARY KEY,
+
+      entity_type TEXT NOT NULL CHECK (entity_type IN ('student','employer')),
+      entity_id BIGINT NOT NULL,
+
+      category TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+
+      original_filename TEXT NOT NULL,
+      stored_rel_path TEXT NOT NULL UNIQUE,
+      mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+      file_size_bytes BIGINT NOT NULL DEFAULT 0,
+
+      uploaded_by_user_id BIGINT REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_access_requests_email ON access_requests(email);`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status);`);
+
+  // OPTIONAL: migrate old student_documents table if it exists (non-destructive)
+  // If your old system created student_documents, we copy rows over once.
+  try {
+    const hasOld = await pool.query(`
+      SELECT to_regclass('public.student_documents') AS t;
+    `);
+
+    if (hasOld.rows[0].t) {
+      const countNew = await pool.query(`SELECT COUNT(*)::int AS c FROM documents;`);
+      if (countNew.rows[0].c === 0) {
+        // Copy what we can. Old stored_filename is assumed to live directly under uploads/.
+        await pool.query(`
+          INSERT INTO documents
+            (entity_type, entity_id, category, title, original_filename, stored_rel_path, mime_type, file_size_bytes, uploaded_by_user_id, created_at)
+          SELECT
+            'student'::text,
+            student_id,
+            COALESCE(doc_type,'Other')::text,
+            COALESCE(NULLIF(title,''), original_filename)::text,
+            original_filename,
+            stored_filename,
+            COALESCE(mime_type,'application/octet-stream')::text,
+            COALESCE(file_size_bytes,0),
+            uploaded_by_user_id,
+            created_at
+          FROM student_documents
+          ON CONFLICT (stored_rel_path) DO NOTHING;
+        `);
+        console.log("✅ Migrated student_documents -> documents (one-time best effort)");
+      }
+    }
+  } catch (e) {
+    // ignore migration issues (safe)
+  }
 
   // Seed admin (first-time only, never overwrites)
   const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   const adminPassword = (process.env.ADMIN_PASSWORD || "").trim();
 
   if (adminEmail && adminPassword) {
-    const existing = await pool.query("SELECT id FROM users WHERE email=$1", [adminEmail]);
+    const existing = await pool.query("SELECT id FROM users WHERE email=$1", [
+      adminEmail,
+    ]);
     if (existing.rows.length === 0) {
       const bcrypt = require("bcryptjs");
       const hash = bcrypt.hashSync(adminPassword, 10);
