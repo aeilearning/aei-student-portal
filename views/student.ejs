@@ -19,6 +19,31 @@
     <div class="alert"><%= message %></div>
   <% } %>
 
+  <% if (pendingChanges && pendingChanges.length) { %>
+    <div class="card">
+      <h2>Pending Updates</h2>
+      <p class="muted small">
+        Updates are held for admin approval before they are finalized in your profile.
+      </p>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pendingChanges.forEach(change => { %>
+            <tr>
+              <td><%= change.section %></td>
+              <td class="small"><%= new Date(change.created_at).toLocaleString() %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
   <div class="card">
     <h2>Apprentice Information (Required)</h2>
     <form method="POST" action="/student/update-identity" class="grid2">
@@ -59,7 +84,7 @@
 
       <div class="stack">
         <label>Zip Code *</label>
-        <input name="zip_code" value="<%= student.zip_code || '' %>" pattern="\\d{5}" required />
+        <input name="zip_code" value="<%= student.zip_code || '' %>" pattern="\d{5}" required />
       </div>
 
       <div class="stack">
@@ -290,7 +315,7 @@
       </div>
 
       <div class="stack">
-        <label>Date Apprenticeship Begins *</label>
+        <label>Enrollment Date *</label>
         <input
           type="date"
           name="enrollment_date"
@@ -393,6 +418,7 @@
             <th>Type</th>
             <th>Title</th>
             <th>Uploaded</th>
+            <th>Status</th>
             <th></th>
           </tr>
         </thead>
@@ -402,6 +428,7 @@
               <td><%= d.doc_type %></td>
               <td><%= d.title %></td>
               <td class="small"><%= new Date(d.created_at).toLocaleDateString() %></td>
+              <td class="small"><%= d.approval_status === 'pending' ? 'Pending approval' : 'Approved' %></td>
               <td><a class="btn" href="/student/docs/<%= d.id %>/download">Download</a></td>
             </tr>
           <% }) %>
