@@ -1,8 +1,3 @@
-diff --git a/server.js b/server.js
-index 884214fcebfc04ce78bf084ba3717ab223176888..568b83588f5ae8f5ef1ecb44f18ba1211b1e13ae 100644
---- a/server.js
-+++ b/server.js
-@@ -1,32 +1,33 @@
  // server.js — Admin + Student Detail + Document Vault + RAPIDS Readiness
  const express = require("express");
  const session = require("express-session");
