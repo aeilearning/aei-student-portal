@@ -167,6 +167,24 @@ function applyContactAddress(form, employer) {
   };
 }
 
+function isValidState(value) {
+  return /^[A-Za-z]{2}$/.test(String(value || "").trim());
+}
+
+function isValidZip(value) {
+  return /^\d{5}$/.test(String(value || "").trim());
+}
+
+function isValidSex(value) {
+  const normalized = String(value || "").trim();
+  return ["Male", "Female", "Non-Binary", "Unknown"].includes(normalized);
+}
+
+function isValidEmploymentStatus(value) {
+  const normalized = String(value || "").trim();
+  return ["Employed", "Unemployed"].includes(normalized);
+}
+
 /* ===================== EMAIL ===================== */
 const MAIL_FROM = process.env.MAIL_FROM;
 const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL;
@@ -508,10 +526,19 @@ app.post(
     const missing = requiredFields.filter((f) => isBlank(req.body[f]));
     const ssnNotProvided = req.body.ssn_not_provided === "on";
 
-    if (missing.length || (!ssnNotProvided && isBlank(req.body.ssn))) {
+    if (
+      missing.length ||
+      (!ssnNotProvided && isBlank(req.body.ssn)) ||
+      !isValidState(req.body.state) ||
+      !isValidZip(req.body.zip_code) ||
+      !isValidSex(req.body.sex) ||
+      !isValidEmploymentStatus(req.body.employment_status)
+    ) {
       return res.redirect(
         "/student?msg=" +
-          encodeURIComponent("Please complete all required identity fields.")
+          encodeURIComponent(
+            "Please complete all required identity fields with valid values."
+          )
       );
     }
 
@@ -784,10 +811,21 @@ app.post(
           isBlank(req.body[f])
         );
 
-    if (missingEmployer.length || missingContact.length || missingContactAddress.length) {
+    if (
+      missingEmployer.length ||
+      missingContact.length ||
+      missingContactAddress.length ||
+      !isValidState(req.body.state) ||
+      !isValidZip(req.body.zip_code) ||
+      (!contactSameAsEmployer &&
+        (!isValidState(req.body.contact_state) ||
+          !isValidZip(req.body.contact_zip)))
+    ) {
       return res.redirect(
         "/employer?msg=" +
-          encodeURIComponent("Please complete all required employer fields.")
+          encodeURIComponent(
+            "Please complete all required employer fields with valid values."
+          )
       );
     }
 
@@ -1037,10 +1075,19 @@ app.post(
     const missing = requiredFields.filter((f) => isBlank(req.body[f]));
     const ssnNotProvided = req.body.ssn_not_provided === "on";
 
-    if (missing.length || (!ssnNotProvided && isBlank(req.body.ssn))) {
+    if (
+      missing.length ||
+      (!ssnNotProvided && isBlank(req.body.ssn)) ||
+      !isValidState(req.body.state) ||
+      !isValidZip(req.body.zip_code) ||
+      !isValidSex(req.body.sex) ||
+      !isValidEmploymentStatus(req.body.employment_status)
+    ) {
       return res.redirect(
         `/admin/students/${studentId}?msg=` +
-          encodeURIComponent("Please complete all required identity fields.")
+          encodeURIComponent(
+            "Please complete all required identity fields with valid values."
+          )
       );
     }
 
@@ -1409,10 +1456,21 @@ app.post(
           isBlank(req.body[f])
         );
 
-    if (missingEmployer.length || missingContact.length || missingContactAddress.length) {
+    if (
+      missingEmployer.length ||
+      missingContact.length ||
+      missingContactAddress.length ||
+      !isValidState(req.body.state) ||
+      !isValidZip(req.body.zip_code) ||
+      (!contactSameAsEmployer &&
+        (!isValidState(req.body.contact_state) ||
+          !isValidZip(req.body.contact_zip)))
+    ) {
       return res.redirect(
         `/admin/employers/${employerId}?msg=` +
-          encodeURIComponent("Please complete all required employer fields.")
+          encodeURIComponent(
+            "Please complete all required employer fields with valid values."
+          )
       );
     }
 
