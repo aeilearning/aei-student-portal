@@ -23,6 +23,8 @@
     <div class="alert"><%= message %></div>
   <% } %>
 
+  <% const docsList = docs || documents || []; %>
+
   <div class="card">
     <div class="row-between">
       <div>
@@ -112,7 +114,7 @@
         <input
           type="date"
           name="date_of_birth"
-          value="<%= student.date_of_birth ? new Date(student.date_of_birth).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.date_of_birth) %>"
           required
         />
       </div>
@@ -276,7 +278,7 @@
         <input
           type="date"
           name="enrollment_date"
-          value="<%= student.enrollment_date ? new Date(student.enrollment_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.enrollment_date) %>"
           required
         />
       </div>
@@ -286,7 +288,7 @@
         <input
           type="date"
           name="exit_date"
-          value="<%= student.exit_date ? new Date(student.exit_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.exit_date) %>"
         />
       </div>
 
@@ -324,7 +326,7 @@
         <input
           type="date"
           name="enrollment_date"
-          value="<%= student.enrollment_date ? new Date(student.enrollment_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.enrollment_date) %>"
           required
         />
       </div>
@@ -344,7 +346,7 @@
         <input
           type="date"
           name="expected_completion_date"
-          value="<%= student.expected_completion_date ? new Date(student.expected_completion_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.expected_completion_date) %>"
           required
         />
       </div>
@@ -423,7 +425,7 @@
 
     <hr />
 
-    <% if (!docs || !docs.length) { %>
+    <% if (!docsList.length) { %>
       <div class="muted">No documents uploaded yet.</div>
     <% } else { %>
       <table>
@@ -435,7 +437,7 @@
           <th>By</th>
           <th>Download</th>
         </tr>
-        <% docs.forEach(d => { %>
+        <% docsList.forEach(d => { %>
           <tr>
             <td><%= d.doc_type %></td>
             <td><%= d.title || d.original_filename %></td>
