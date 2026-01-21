@@ -148,6 +148,12 @@ function isBlank(v) {
   return String(v ?? "").trim() === "";
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 /* ===================== EMAIL ===================== */
 const MAIL_FROM = process.env.MAIL_FROM;
 const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL;
@@ -472,11 +478,24 @@ app.post(
   "/student/update-identity",
   requireRole("student"),
   wrap(async (req, res) => {
-    const missing = ["first_name", "last_name", "phone", "employer_name"].filter((f) =>
-      isBlank(req.body[f])
-    );
+    const requiredFields = [
+      "first_name",
+      "last_name",
+      "address",
+      "city",
+      "state",
+      "zip_code",
+      "phone",
+      "employer_name",
+      "date_of_birth",
+      "sex",
+      "employment_status",
+      "pre_apprenticeship",
+    ];
+    const missing = requiredFields.filter((f) => isBlank(req.body[f]));
+    const ssnNotProvided = req.body.ssn_not_provided === "on";
 
-    if (missing.length) {
+    if (missing.length || (!ssnNotProvided && isBlank(req.body.ssn))) {
       return res.redirect(
         "/student?msg=" +
           encodeURIComponent("Please complete all required identity fields.")
@@ -485,18 +504,157 @@ app.post(
 
     await pool.query(
       `UPDATE students
-       SET first_name=$1, last_name=$2, phone=$3, employer_name=$4
-       WHERE user_id=$5`,
+       SET first_name=$1,
+           middle_name=$2,
+           last_name=$3,
+           suffix=$4,
+           address=$5,
+           city=$6,
+           state=$7,
+           zip_code=$8,
+           phone=$9,
+           employer_name=$10,
+           ssn=$11,
+           ssn_not_provided=$12,
+           date_of_birth=$13,
+           sex=$14,
+           employment_status=$15,
+           pre_apprenticeship=$16
+       WHERE user_id=$17`,
       [
         cleanText(req.body.first_name),
+        cleanText(req.body.middle_name),
         cleanText(req.body.last_name),
+        cleanText(req.body.suffix),
+        cleanText(req.body.address),
+        cleanText(req.body.city),
+        cleanText(req.body.state),
+        cleanText(req.body.zip_code),
         cleanText(req.body.phone),
         cleanText(req.body.employer_name),
+        ssnNotProvided ? null : cleanText(req.body.ssn),
+        ssnNotProvided,
+        req.body.date_of_birth || null,
+        cleanText(req.body.sex),
+        cleanText(req.body.employment_status),
+        cleanText(req.body.pre_apprenticeship),
         req.session.user.id,
       ]
     );
 
     return res.redirect("/student?msg=" + encodeURIComponent("Profile updated."));
+  })
+);
+
+app.post(
+  "/student/update-demographics",
+  requireRole("student"),
+  wrap(async (req, res) => {
+    const requiredFields = [
+      "ethnicity",
+      "race",
+      "veteran_status",
+      "education_level",
+      "disability",
+    ];
+    const missing = requiredFields.filter((f) => isBlank(req.body[f]));
+
+    if (missing.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Please complete all required demographics fields.")
+      );
+    }
+
+    await pool.query(
+      `UPDATE students
+       SET ethnicity=$1,
+           race=$2,
+           veteran_status=$3,
+           education_level=$4,
+           disability=$5
+       WHERE user_id=$6`,
+      [
+        cleanText(req.body.ethnicity),
+        cleanText(req.body.race),
+        cleanText(req.body.veteran_status),
+        cleanText(req.body.education_level),
+        cleanText(req.body.disability),
+        req.session.user.id,
+      ]
+    );
+
+    return res.redirect(
+      "/student?msg=" + encodeURIComponent("Demographics updated.")
+    );
+  })
+);
+
+app.post(
+  "/student/update-occupation",
+  requireRole("student"),
+  wrap(async (req, res) => {
+    const requiredFields = [
+      "occupation_name",
+      "occupation_code",
+      "enrollment_date",
+      "probationary_period_hours",
+      "term_remaining_hours",
+      "expected_completion_date",
+      "otjl_credit_hours",
+      "related_instruction_credit_hours",
+      "related_instruction_provider",
+      "entry_wage",
+      "entry_wage_units",
+      "wage_schedule",
+      "journeyworker_wage",
+    ];
+    const missing = requiredFields.filter((f) => isBlank(req.body[f]));
+
+    if (missing.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Please complete all required occupation fields.")
+      );
+    }
+
+    await pool.query(
+      `UPDATE students
+       SET occupation_name=$1,
+           occupation_code=$2,
+           enrollment_date=$3,
+           probationary_period_hours=$4,
+           term_remaining_hours=$5,
+           expected_completion_date=$6,
+           otjl_credit_hours=$7,
+           related_instruction_credit_hours=$8,
+           related_instruction_provider=$9,
+           entry_wage=$10,
+           entry_wage_units=$11,
+           wage_schedule=$12,
+           journeyworker_wage=$13
+       WHERE user_id=$14`,
+      [
+        cleanText(req.body.occupation_name),
+        cleanText(req.body.occupation_code),
+        req.body.enrollment_date || null,
+        numberOrNull(req.body.probationary_period_hours),
+        numberOrNull(req.body.term_remaining_hours),
+        req.body.expected_completion_date || null,
+        numberOrNull(req.body.otjl_credit_hours),
+        numberOrNull(req.body.related_instruction_credit_hours),
+        cleanText(req.body.related_instruction_provider),
+        numberOrNull(req.body.entry_wage),
+        cleanText(req.body.entry_wage_units),
+        cleanText(req.body.wage_schedule),
+        numberOrNull(req.body.journeyworker_wage),
+        req.session.user.id,
+      ]
+    );
+
+    return res.redirect(
+      "/student?msg=" + encodeURIComponent("Occupation details updated.")
+    );
   })
 );
 
@@ -746,11 +904,24 @@ app.post(
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
 
-    const missing = ["first_name", "last_name", "phone", "employer_name"].filter((f) =>
-      isBlank(req.body[f])
-    );
+    const requiredFields = [
+      "first_name",
+      "last_name",
+      "address",
+      "city",
+      "state",
+      "zip_code",
+      "phone",
+      "employer_name",
+      "date_of_birth",
+      "sex",
+      "employment_status",
+      "pre_apprenticeship",
+    ];
+    const missing = requiredFields.filter((f) => isBlank(req.body[f]));
+    const ssnNotProvided = req.body.ssn_not_provided === "on";
 
-    if (missing.length) {
+    if (missing.length || (!ssnNotProvided && isBlank(req.body.ssn))) {
       return res.redirect(
         `/admin/students/${studentId}?msg=` +
           encodeURIComponent("Please complete all required identity fields.")
@@ -759,13 +930,42 @@ app.post(
 
     await pool.query(
       `UPDATE students
-       SET first_name=$1, last_name=$2, phone=$3, employer_name=$4, level=$5, status=$6
-       WHERE id=$7`,
+       SET first_name=$1,
+           middle_name=$2,
+           last_name=$3,
+           suffix=$4,
+           address=$5,
+           city=$6,
+           state=$7,
+           zip_code=$8,
+           phone=$9,
+           employer_name=$10,
+           ssn=$11,
+           ssn_not_provided=$12,
+           date_of_birth=$13,
+           sex=$14,
+           employment_status=$15,
+           pre_apprenticeship=$16,
+           level=$17,
+           status=$18
+       WHERE id=$19`,
       [
         cleanText(req.body.first_name),
+        cleanText(req.body.middle_name),
         cleanText(req.body.last_name),
+        cleanText(req.body.suffix),
+        cleanText(req.body.address),
+        cleanText(req.body.city),
+        cleanText(req.body.state),
+        cleanText(req.body.zip_code),
         cleanText(req.body.phone),
         cleanText(req.body.employer_name),
+        ssnNotProvided ? null : cleanText(req.body.ssn),
+        ssnNotProvided,
+        req.body.date_of_birth || null,
+        cleanText(req.body.sex),
+        cleanText(req.body.employment_status),
+        cleanText(req.body.pre_apprenticeship),
         Number(req.body.level || 1),
         cleanText(req.body.status),
         studentId,
@@ -834,6 +1034,122 @@ app.post(
     return res.redirect(
       `/admin/students/${studentId}?msg=` +
         encodeURIComponent("RAPIDS fields updated")
+    );
+  })
+);
+
+app.post(
+  "/admin/students/:id/update-demographics",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const studentId = Number(req.params.id);
+    const requiredFields = [
+      "ethnicity",
+      "race",
+      "veteran_status",
+      "education_level",
+      "disability",
+    ];
+    const missing = requiredFields.filter((f) => isBlank(req.body[f]));
+
+    if (missing.length) {
+      return res.redirect(
+        `/admin/students/${studentId}?msg=` +
+          encodeURIComponent("Please complete all required demographics fields.")
+      );
+    }
+
+    await pool.query(
+      `UPDATE students
+       SET ethnicity=$1,
+           race=$2,
+           veteran_status=$3,
+           education_level=$4,
+           disability=$5
+       WHERE id=$6`,
+      [
+        cleanText(req.body.ethnicity),
+        cleanText(req.body.race),
+        cleanText(req.body.veteran_status),
+        cleanText(req.body.education_level),
+        cleanText(req.body.disability),
+        studentId,
+      ]
+    );
+
+    return res.redirect(
+      `/admin/students/${studentId}?msg=` +
+        encodeURIComponent("Demographics updated")
+    );
+  })
+);
+
+app.post(
+  "/admin/students/:id/update-occupation",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const studentId = Number(req.params.id);
+    const requiredFields = [
+      "occupation_name",
+      "occupation_code",
+      "enrollment_date",
+      "probationary_period_hours",
+      "term_remaining_hours",
+      "expected_completion_date",
+      "otjl_credit_hours",
+      "related_instruction_credit_hours",
+      "related_instruction_provider",
+      "entry_wage",
+      "entry_wage_units",
+      "wage_schedule",
+      "journeyworker_wage",
+    ];
+    const missing = requiredFields.filter((f) => isBlank(req.body[f]));
+
+    if (missing.length) {
+      return res.redirect(
+        `/admin/students/${studentId}?msg=` +
+          encodeURIComponent("Please complete all required occupation fields.")
+      );
+    }
+
+    await pool.query(
+      `UPDATE students
+       SET occupation_name=$1,
+           occupation_code=$2,
+           enrollment_date=$3,
+           probationary_period_hours=$4,
+           term_remaining_hours=$5,
+           expected_completion_date=$6,
+           otjl_credit_hours=$7,
+           related_instruction_credit_hours=$8,
+           related_instruction_provider=$9,
+           entry_wage=$10,
+           entry_wage_units=$11,
+           wage_schedule=$12,
+           journeyworker_wage=$13
+       WHERE id=$14`,
+      [
+        cleanText(req.body.occupation_name),
+        cleanText(req.body.occupation_code),
+        req.body.enrollment_date || null,
+        numberOrNull(req.body.probationary_period_hours),
+        numberOrNull(req.body.term_remaining_hours),
+        req.body.expected_completion_date || null,
+        numberOrNull(req.body.otjl_credit_hours),
+        numberOrNull(req.body.related_instruction_credit_hours),
+        cleanText(req.body.related_instruction_provider),
+        numberOrNull(req.body.entry_wage),
+        cleanText(req.body.entry_wage_units),
+        cleanText(req.body.wage_schedule),
+        numberOrNull(req.body.journeyworker_wage),
+        studentId,
+      ]
+    );
+
+    return res.redirect(
+      `/admin/students/${studentId}?msg=` +
+        encodeURIComponent("Occupation details updated")
     );
   })
 );
