@@ -20,21 +20,26 @@
   <% } %>
 
   <div class="card">
-    <h2>Profile</h2>
-    <div class="grid2">
+    <h2>Profile (Required)</h2>
+    <form method="POST" action="/student/update-identity" class="grid2">
       <div class="stack">
-        <label>Name</label>
-        <div class="muted"><%= (student.first_name || '') %> <%= (student.last_name || '') %></div>
+        <label>First Name *</label>
+        <input name="first_name" value="<%= student.first_name || '' %>" required />
       </div>
 
       <div class="stack">
-        <label>Phone</label>
-        <div class="muted"><%= student.phone || '' %></div>
+        <label>Last Name *</label>
+        <input name="last_name" value="<%= student.last_name || '' %>" required />
       </div>
 
       <div class="stack">
-        <label>Employer</label>
-        <div class="muted"><%= student.employer_name || '' %></div>
+        <label>Phone *</label>
+        <input name="phone" value="<%= student.phone || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Employer Name *</label>
+        <input name="employer_name" value="<%= student.employer_name || '' %>" required />
       </div>
 
       <div class="stack">
@@ -46,11 +51,78 @@
         <label>Status</label>
         <div class="muted"><%= student.status || '' %></div>
       </div>
-    </div>
 
-    <div class="muted small" style="margin-top:10px;">
-      Student self-service editing and uploads are coming next. For now, admin manages changes and document uploads.
-    </div>
+      <div>
+        <button>Save Profile</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>RAPIDS Fields (Required)</h2>
+    <form method="POST" action="/student/update-rapids" class="grid2">
+      <div class="stack">
+        <label>Program Name *</label>
+        <input name="program_name" value="<%= student.program_name || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Provider Program ID *</label>
+        <input name="provider_program_id" value="<%= student.provider_program_id || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Program System ID *</label>
+        <input name="program_system_id" value="<%= student.program_system_id || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Student ID Number *</label>
+        <input name="student_id_no" value="<%= student.student_id_no || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Student ID Type *</label>
+        <select name="student_id_type" required>
+          <% STUDENT_ID_TYPES.forEach(t => { %>
+            <option value="<%= t %>" <%= student.student_id_type === t ? 'selected' : '' %>><%= t %></option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Enrollment Date *</label>
+        <input
+          type="date"
+          name="enrollment_date"
+          value="<%= student.enrollment_date ? new Date(student.enrollment_date).toISOString().slice(0,10) : '' %>"
+          required
+        />
+      </div>
+
+      <div class="stack">
+        <label>Exit Date</label>
+        <input
+          type="date"
+          name="exit_date"
+          value="<%= student.exit_date ? new Date(student.exit_date).toISOString().slice(0,10) : '' %>"
+        />
+      </div>
+
+      <div class="stack">
+        <label>Exit Type</label>
+        <input name="exit_type" value="<%= student.exit_type || '' %>" />
+      </div>
+
+      <div class="stack">
+        <label>Credential</label>
+        <input name="credential" value="<%= student.credential || '' %>" />
+      </div>
+
+      <div>
+        <button>Save RAPIDS Fields</button>
+      </div>
+    </form>
   </div>
 
   <div class="card">

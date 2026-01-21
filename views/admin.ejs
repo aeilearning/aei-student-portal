@@ -91,12 +91,14 @@
           <th>ID</th>
           <th>Email</th>
           <th>Company</th>
+          <th>Open</th>
         </tr>
         <% employers.forEach(e => { %>
           <tr>
             <td><%= e.id %></td>
             <td><%= e.email %></td>
             <td><%= e.company_name || '' %></td>
+            <td><a class="btn" href="/admin/employers/<%= e.id %>">Open</a></td>
           </tr>
         <% }) %>
       </table>
