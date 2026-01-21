@@ -20,6 +20,30 @@
   <% } %>
 
   <div class="card">
+    <h2>Portal Messages</h2>
+    <p class="muted small">
+      These messages appear at the top of each portal after login. Leave blank to hide.
+    </p>
+    <form method="POST" action="/admin/portal-messages" class="stack">
+      <div class="stack">
+        <label>Students Only</label>
+        <textarea name="student_message" rows="3"><%= portalMessages.student || '' %></textarea>
+      </div>
+      <div class="stack">
+        <label>Employers Only</label>
+        <textarea name="employer_message" rows="3"><%= portalMessages.employer || '' %></textarea>
+      </div>
+      <div class="stack">
+        <label>Unified (Students + Employers)</label>
+        <textarea name="both_message" rows="3"><%= portalMessages.both || '' %></textarea>
+      </div>
+      <div>
+        <button>Save Messages</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
     <h2>Create Student</h2>
     <form method="POST" action="/admin/students/create" class="grid2">
       <div class="stack">
