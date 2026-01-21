@@ -54,6 +54,81 @@
   </div>
 
   <div class="card">
+    <h2>Pending Student Profile Updates</h2>
+    <% if (!pendingChanges || !pendingChanges.length) { %>
+      <div class="muted small">No pending profile updates.</div>
+    <% } else { %>
+      <table>
+        <tr>
+          <th>Student</th>
+          <th>Section</th>
+          <th>Submitted</th>
+          <th>Changes</th>
+          <th>Approve</th>
+        </tr>
+        <% pendingChanges.forEach(c => { %>
+          <tr>
+            <td>
+              <div><%= c.first_name || '' %> <%= c.last_name || '' %></div>
+              <div class="small muted"><%= c.email %></div>
+            </td>
+            <td><%= c.section %></td>
+            <td class="small"><%= new Date(c.created_at).toLocaleString() %></td>
+            <td class="small">
+              <ul>
+                <% Object.entries(c.changes || {}).forEach(([key, value]) => { %>
+                  <li><%= key %>: <%= value === null || value === '' ? '—' : value %></li>
+                <% }) %>
+              </ul>
+            </td>
+            <td>
+              <form method="POST" action="/admin/student-changes/<%= c.id %>/approve">
+                <button class="btn" type="submit">Approve</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </table>
+    <% } %>
+  </div>
+
+  <div class="card">
+    <h2>Pending Student Documents</h2>
+    <% if (!pendingDocs || !pendingDocs.length) { %>
+      <div class="muted small">No pending documents.</div>
+    <% } else { %>
+      <table>
+        <tr>
+          <th>Student</th>
+          <th>Document</th>
+          <th>Uploaded</th>
+          <th>Review</th>
+          <th>Approve</th>
+        </tr>
+        <% pendingDocs.forEach(d => { %>
+          <tr>
+            <td>
+              <div><%= d.first_name || '' %> <%= d.last_name || '' %></div>
+              <div class="small muted"><%= d.email %></div>
+            </td>
+            <td>
+              <div><%= d.doc_type %></div>
+              <div class="small muted"><%= d.title %></div>
+            </td>
+            <td class="small"><%= new Date(d.created_at).toLocaleString() %></td>
+            <td><a class="btn" href="/admin/docs/<%= d.id %>/download">Download</a></td>
+            <td>
+              <form method="POST" action="/admin/student-docs/<%= d.id %>/approve">
+                <button class="btn" type="submit">Approve</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </table>
+    <% } %>
+  </div>
+
+  <div class="card">
     <h2>Students</h2>
     <% if (!students || !students.length) { %>
       <div class="muted small">No students yet.</div>
