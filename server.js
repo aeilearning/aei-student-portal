@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
+const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const { pool, initDb } = require("./db");
 
@@ -143,6 +144,60 @@ function cleanText(v) {
   return String(v ?? "").trim();
 }
 
+/* ===================== EMAIL ===================== */
+const MAIL_FROM = process.env.MAIL_FROM;
+const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL;
+const BASE_URL = process.env.BASE_URL;
+let mailTransporter = null;
+
+function buildLoginUrl() {
+  if (BASE_URL && String(BASE_URL).trim().length) {
+    return `${String(BASE_URL).replace(/\/$/, "")}/login`;
+  }
+  return "/login";
+}
+
+function getMailTransporter() {
+  if (mailTransporter) return mailTransporter;
+
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!host || !port || !user || !pass || !MAIL_FROM) {
+    console.warn("⚠️ SMTP not configured. Email sending disabled.");
+    return null;
+  }
+
+  mailTransporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+
+  return mailTransporter;
+}
+
+async function sendEmail({ to, subject, text }) {
+  if (!to || !subject || !text) return;
+
+  const transporter = getMailTransporter();
+  if (!transporter) return;
+
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to,
+      subject,
+      text,
+    });
+  } catch (err) {
+    console.error("❌ Email send failed:", err);
+  }
+}
+
 /* ===================== UPLOADS SETUP ===================== */
 /**
  * Render note:
@@ -237,6 +292,33 @@ app.post(
       [email, role, note]
     );
 
+    const adminText = [
+      "New registration request received.",
+      "",
+      `Email: ${email}`,
+      `Requested role: ${role}`,
+      `Note: ${note || "None"}`,
+    ].join("\n");
+
+    const requesterText = [
+      "Thanks for your request to access the AEI Student Portal.",
+      "We received your registration request and will follow up if approved.",
+      "",
+      `Requested role: ${role}`,
+    ].join("\n");
+
+    await sendEmail({
+      to: ADMIN_NOTIFY_EMAIL,
+      subject: "AEI Portal – New Registration Request",
+      text: adminText,
+    });
+
+    await sendEmail({
+      to: email,
+      subject: "AEI Portal – Registration Request Received",
+      text: requesterText,
+    });
+
     return res.redirect(
       "/login?msg=" +
         encodeURIComponent("Request received. AEI will follow up if approved.")
@@ -265,6 +347,30 @@ app.post(
        VALUES ('reset_password', $1, '', $2)`,
       [email, note]
     );
+
+    const adminText = [
+      "New password reset request received.",
+      "",
+      `Email: ${email}`,
+      `Note: ${note || "None"}`,
+    ].join("\n");
+
+    const requesterText = [
+      "We received your password reset request for the AEI Student Portal.",
+      "AEI will follow up with next steps.",
+    ].join("\n");
+
+    await sendEmail({
+      to: ADMIN_NOTIFY_EMAIL,
+      subject: "AEI Portal – Password Reset Request",
+      text: adminText,
+    });
+
+    await sendEmail({
+      to: email,
+      subject: "AEI Portal – Reset Request Received",
+      text: requesterText,
+    });
 
     return res.redirect(
       "/login?msg=" + encodeURIComponent("Reset request received. AEI will follow up.")
@@ -416,6 +522,21 @@ app.post(
 
       await pool.query(`INSERT INTO students (user_id) VALUES ($1)`, [userId]);
 
+      const loginUrl = buildLoginUrl();
+      const studentText = [
+        "Your AEI Student Portal account has been created.",
+        "",
+        `Email: ${email}`,
+        `Temporary password: ${password}`,
+        `Login: ${loginUrl}`,
+      ].join("\n");
+
+      await sendEmail({
+        to: email,
+        subject: "AEI Portal – Your Account Details",
+        text: studentText,
+      });
+
       return res.redirect(
         "/admin?msg=" +
           encodeURIComponent(`Student created. Temp password: ${password}`)
@@ -448,6 +569,21 @@ app.post(
       });
 
       await pool.query(`INSERT INTO employers (user_id) VALUES ($1)`, [userId]);
+
+      const loginUrl = buildLoginUrl();
+      const employerText = [
+        "Your AEI Employer Portal account has been created.",
+        "",
+        `Email: ${email}`,
+        `Temporary password: ${password}`,
+        `Login: ${loginUrl}`,
+      ].join("\n");
+
+      await sendEmail({
+        to: email,
+        subject: "AEI Portal – Your Account Details",
+        text: employerText,
+      });
 
       return res.redirect(
         "/admin?msg=" +
