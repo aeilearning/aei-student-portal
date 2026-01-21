@@ -15,6 +15,16 @@
     <a class="link" href="/logout">Logout</a>
   </div>
 
+  <% const portalNotices = [portalMessages?.both, portalMessages?.employer].filter(m => m && m.trim()); %>
+  <% if (portalNotices.length) { %>
+    <div class="card">
+      <h2>Message from AEI</h2>
+      <% portalNotices.forEach(note => { %>
+        <p class="muted"><%= note %></p>
+      <% }) %>
+    </div>
+  <% } %>
+
   <% if (message) { %>
     <div class="alert"><%= message %></div>
   <% } %>
@@ -63,7 +73,7 @@
         <input
           type="date"
           name="start_date"
-          value="<%= employer.start_date ? new Date(employer.start_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(employer.start_date) %>"
           required
         />
       </div>
