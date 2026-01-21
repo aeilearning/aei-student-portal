@@ -44,6 +44,51 @@ const STUDENT_ID_TYPES = [
   "Other",
 ];
 
+const STUDENT_CHANGE_FIELDS = new Set([
+  "first_name",
+  "middle_name",
+  "last_name",
+  "suffix",
+  "address",
+  "city",
+  "state",
+  "zip_code",
+  "phone",
+  "employer_name",
+  "ssn",
+  "ssn_not_provided",
+  "date_of_birth",
+  "sex",
+  "employment_status",
+  "pre_apprenticeship",
+  "ethnicity",
+  "race",
+  "veteran_status",
+  "education_level",
+  "disability",
+  "occupation_name",
+  "occupation_code",
+  "enrollment_date",
+  "probationary_period_hours",
+  "term_remaining_hours",
+  "expected_completion_date",
+  "otjl_credit_hours",
+  "related_instruction_credit_hours",
+  "related_instruction_provider",
+  "entry_wage",
+  "entry_wage_units",
+  "wage_schedule",
+  "journeyworker_wage",
+  "program_name",
+  "provider_program_id",
+  "program_system_id",
+  "student_id_no",
+  "student_id_type",
+  "exit_date",
+  "exit_type",
+  "credential",
+]);
+
 /* ===================== BOOTSTRAP DB ===================== */
 (async () => {
   try {
@@ -185,6 +230,15 @@ function isValidEmploymentStatus(value) {
   return ["Employed", "Unemployed"].includes(normalized);
 }
 
+async function queueStudentChange({ studentId, userId, section, changes }) {
+  await pool.query(
+    `INSERT INTO student_profile_change_requests
+     (student_id, requested_by_user_id, section, changes)
+     VALUES ($1,$2,$3,$4)`,
+    [studentId, userId, section, changes]
+  );
+}
+
 /* ===================== EMAIL ===================== */
 const MAIL_FROM = process.env.MAIL_FROM;
 const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL;
@@ -319,6 +373,8 @@ app.post(
   wrap(async (req, res) => {
     const email = cleanEmail(req.body.email);
     const role = cleanText(req.body.role); // student/employer
+    const password = String(req.body.password || "");
+    const confirmPassword = String(req.body.confirm_password || "");
     const note = cleanText(req.body.note);
 
     if (!email || !["student", "employer"].includes(role)) {
@@ -327,45 +383,63 @@ app.post(
       );
     }
 
-    await pool.query(
-      `INSERT INTO access_requests (request_type, email, requested_role, note)
-       VALUES ('register', $1, $2, $3)`,
-      [email, role, note]
-    );
+    if (!password || password.length < 8) {
+      return res.redirect(
+        "/register?msg=" +
+          encodeURIComponent("Please choose a password with at least 8 characters.")
+      );
+    }
 
-    const adminText = [
-      "New registration request received.",
-      "",
-      `Email: ${email}`,
-      `Requested role: ${role}`,
-      `Note: ${note || "None"}`,
-    ].join("\n");
+    if (password !== confirmPassword) {
+      return res.redirect(
+        "/register?msg=" + encodeURIComponent("Passwords do not match.")
+      );
+    }
 
-    const requesterText = [
-      "Thanks for your request to access the AEI Student Portal.",
-      "We received your registration request and will follow up if approved.",
-      "",
-      `Requested role: ${role}`,
-    ].join("\n");
+    try {
+      const passwordHash = bcrypt.hashSync(password, 10);
+      const { rows } = await pool.query(
+        `INSERT INTO users (email, password_hash, role)
+         VALUES ($1,$2,$3)
+         RETURNING id, email, role`,
+        [email, passwordHash, role]
+      );
 
-    await sendEmail({
-      to: ADMIN_NOTIFY_EMAIL,
-      subject: "AEI Portal – New Registration Request",
-      text: adminText,
-    });
+      const userId = rows[0].id;
 
-    await sendEmail({
-      to: email,
-      subject: "AEI Portal – Registration Request Received",
-      text: requesterText,
-    });
+      if (role === "student") {
+        await pool.query(`INSERT INTO students (user_id) VALUES ($1)`, [userId]);
+      } else {
+        await pool.query(`INSERT INTO employers (user_id) VALUES ($1)`, [userId]);
+      }
 
-    return res.redirect(
-      "/login?msg=" +
-        encodeURIComponent(
-          "Request received. American Electrical Innovations Ltd. will follow up if approved."
-        )
-    );
+      await sendEmail({
+        to: ADMIN_NOTIFY_EMAIL,
+        subject: "AEI Portal – New Self-Registration",
+        text: [
+          "A new self-registered account was created.",
+          "",
+          `Email: ${email}`,
+          `Role: ${role}`,
+          `Note: ${note || "None"}`,
+        ].join("\n"),
+      });
+
+      req.session.user = {
+        id: userId,
+        email: rows[0].email,
+        role: rows[0].role,
+      };
+
+      return res.redirect(role === "student" ? "/student" : "/employer");
+    } catch (e) {
+      if (isDuplicateEmailError(e)) {
+        return res.redirect(
+          "/register?msg=" + encodeURIComponent("Email already exists.")
+        );
+      }
+      throw e;
+    }
   })
 );
 
@@ -449,6 +523,24 @@ app.get(
        GROUP BY student_id`
     );
 
+    const pendingChanges = await pool.query(
+      `SELECT c.*, s.first_name, s.last_name, u.email
+       FROM student_profile_change_requests c
+       JOIN students s ON s.id = c.student_id
+       JOIN users u ON u.id = s.user_id
+       WHERE c.status = 'pending'
+       ORDER BY c.created_at DESC`
+    );
+
+    const pendingDocs = await pool.query(
+      `SELECT d.*, s.first_name, s.last_name, u.email
+       FROM student_documents d
+       JOIN students s ON s.id = d.student_id
+       JOIN users u ON u.id = s.user_id
+       WHERE d.approval_status = 'pending'
+       ORDER BY d.created_at DESC`
+    );
+
     const docCountMap = new Map(
       docCounts.rows.map((r) => [String(r.student_id), r.cnt])
     );
@@ -467,10 +559,90 @@ app.get(
       user: req.session.user,
       students: studentsWithIndicators,
       employers: employers.rows,
+      pendingChanges: pendingChanges.rows,
+      pendingDocs: pendingDocs.rows,
       LEVELS,
       STUDENT_STATUSES,
       message: req.query.msg || null,
     });
+  })
+);
+
+app.post(
+  "/admin/student-changes/:changeId/approve",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const changeId = Number(req.params.changeId);
+    if (!Number.isFinite(changeId)) {
+      return res.redirect("/admin?msg=" + encodeURIComponent("Invalid request."));
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM student_profile_change_requests WHERE id=$1`,
+      [changeId]
+    );
+    if (!rows.length || rows[0].status !== "pending") {
+      return res.redirect(
+        "/admin?msg=" + encodeURIComponent("Change request not found.")
+      );
+    }
+
+    const change = rows[0];
+    const changes = change.changes || {};
+    const fields = Object.keys(changes).filter((f) => STUDENT_CHANGE_FIELDS.has(f));
+
+    if (fields.length) {
+      const setClauses = fields.map((field, idx) => `${field}=$${idx + 1}`);
+      const values = fields.map((field) => changes[field]);
+      values.push(change.student_id);
+      await pool.query(
+        `UPDATE students SET ${setClauses.join(", ")} WHERE id=$${fields.length + 1}`,
+        values
+      );
+    }
+
+    await pool.query(
+      `UPDATE student_profile_change_requests
+       SET status='approved',
+           reviewed_at=NOW(),
+           reviewed_by=$1
+       WHERE id=$2`,
+      [req.session.user.id, changeId]
+    );
+
+    return res.redirect(
+      "/admin?msg=" + encodeURIComponent("Student change approved.")
+    );
+  })
+);
+
+app.post(
+  "/admin/student-docs/:docId/approve",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const docId = Number(req.params.docId);
+    if (!Number.isFinite(docId)) {
+      return res.redirect("/admin?msg=" + encodeURIComponent("Invalid request."));
+    }
+
+    const { rowCount } = await pool.query(
+      `UPDATE student_documents
+       SET approval_status='approved',
+           approved_at=NOW(),
+           approved_by=$1
+       WHERE id=$2 AND approval_status='pending'`,
+      [req.session.user.id, docId]
+    );
+
+    if (!rowCount) {
+      return res.redirect(
+        "/admin?msg=" + encodeURIComponent("Document not found.")
+      );
+    }
+
+    return res.redirect(
+      "/admin?msg=" + encodeURIComponent("Document approved.")
+    );
   })
 );
 
@@ -501,12 +673,21 @@ app.get(
       [r.rows[0].id]
     );
 
+    const pendingChanges = await pool.query(
+      `SELECT id, section, created_at
+       FROM student_profile_change_requests
+       WHERE student_id = $1 AND status = 'pending'
+       ORDER BY created_at DESC`,
+      [r.rows[0].id]
+    );
+
     res.render("student", {
       user: req.session.user,
       student: r.rows[0],
       DOC_TYPES,
       STUDENT_ID_TYPES,
       documents: documents.rows,
+      pendingChanges: pendingChanges.rows,
       message: req.query.msg || null,
     });
   })
@@ -549,47 +730,44 @@ app.post(
       );
     }
 
-    await pool.query(
-      `UPDATE students
-       SET first_name=$1,
-           middle_name=$2,
-           last_name=$3,
-           suffix=$4,
-           address=$5,
-           city=$6,
-           state=$7,
-           zip_code=$8,
-           phone=$9,
-           employer_name=$10,
-           ssn=$11,
-           ssn_not_provided=$12,
-           date_of_birth=$13,
-           sex=$14,
-           employment_status=$15,
-           pre_apprenticeship=$16
-       WHERE user_id=$17`,
-      [
-        cleanText(req.body.first_name),
-        cleanText(req.body.middle_name),
-        cleanText(req.body.last_name),
-        cleanText(req.body.suffix),
-        cleanText(req.body.address),
-        cleanText(req.body.city),
-        cleanText(req.body.state),
-        cleanText(req.body.zip_code),
-        cleanText(req.body.phone),
-        cleanText(req.body.employer_name),
-        ssnNotProvided ? null : cleanText(req.body.ssn),
-        ssnNotProvided,
-        req.body.date_of_birth || null,
-        cleanText(req.body.sex),
-        cleanText(req.body.employment_status),
-        cleanText(req.body.pre_apprenticeship),
-        req.session.user.id,
-      ]
-    );
+    const s = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [
+      req.session.user.id,
+    ]);
+    if (!s.rows.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Student profile not found. Contact AEI.")
+      );
+    }
 
-    return res.redirect("/student?msg=" + encodeURIComponent("Profile updated."));
+    await queueStudentChange({
+      studentId: s.rows[0].id,
+      userId: req.session.user.id,
+      section: "identity",
+      changes: {
+        first_name: cleanText(req.body.first_name),
+        middle_name: cleanText(req.body.middle_name),
+        last_name: cleanText(req.body.last_name),
+        suffix: cleanText(req.body.suffix),
+        address: cleanText(req.body.address),
+        city: cleanText(req.body.city),
+        state: cleanText(req.body.state),
+        zip_code: cleanText(req.body.zip_code),
+        phone: cleanText(req.body.phone),
+        employer_name: cleanText(req.body.employer_name),
+        ssn: ssnNotProvided ? null : cleanText(req.body.ssn),
+        ssn_not_provided: ssnNotProvided,
+        date_of_birth: req.body.date_of_birth || null,
+        sex: cleanText(req.body.sex),
+        employment_status: cleanText(req.body.employment_status),
+        pre_apprenticeship: cleanText(req.body.pre_apprenticeship),
+      },
+    });
+
+    return res.redirect(
+      "/student?msg=" +
+        encodeURIComponent("Update submitted for admin approval.")
+    );
   })
 );
 
@@ -613,26 +791,31 @@ app.post(
       );
     }
 
-    await pool.query(
-      `UPDATE students
-       SET ethnicity=$1,
-           race=$2,
-           veteran_status=$3,
-           education_level=$4,
-           disability=$5
-       WHERE user_id=$6`,
-      [
-        cleanText(req.body.ethnicity),
-        cleanText(req.body.race),
-        cleanText(req.body.veteran_status),
-        cleanText(req.body.education_level),
-        cleanText(req.body.disability),
-        req.session.user.id,
-      ]
-    );
+    const s = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [
+      req.session.user.id,
+    ]);
+    if (!s.rows.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Student profile not found. Contact AEI.")
+      );
+    }
+
+    await queueStudentChange({
+      studentId: s.rows[0].id,
+      userId: req.session.user.id,
+      section: "demographics",
+      changes: {
+        ethnicity: cleanText(req.body.ethnicity),
+        race: cleanText(req.body.race),
+        veteran_status: cleanText(req.body.veteran_status),
+        education_level: cleanText(req.body.education_level),
+        disability: cleanText(req.body.disability),
+      },
+    });
 
     return res.redirect(
-      "/student?msg=" + encodeURIComponent("Demographics updated.")
+      "/student?msg=" + encodeURIComponent("Update submitted for admin approval.")
     );
   })
 );
@@ -665,42 +848,41 @@ app.post(
       );
     }
 
-    await pool.query(
-      `UPDATE students
-       SET occupation_name=$1,
-           occupation_code=$2,
-           enrollment_date=$3,
-           probationary_period_hours=$4,
-           term_remaining_hours=$5,
-           expected_completion_date=$6,
-           otjl_credit_hours=$7,
-           related_instruction_credit_hours=$8,
-           related_instruction_provider=$9,
-           entry_wage=$10,
-           entry_wage_units=$11,
-           wage_schedule=$12,
-           journeyworker_wage=$13
-       WHERE user_id=$14`,
-      [
-        cleanText(req.body.occupation_name),
-        cleanText(req.body.occupation_code),
-        req.body.enrollment_date || null,
-        numberOrNull(req.body.probationary_period_hours),
-        numberOrNull(req.body.term_remaining_hours),
-        req.body.expected_completion_date || null,
-        numberOrNull(req.body.otjl_credit_hours),
-        numberOrNull(req.body.related_instruction_credit_hours),
-        cleanText(req.body.related_instruction_provider),
-        numberOrNull(req.body.entry_wage),
-        cleanText(req.body.entry_wage_units),
-        cleanText(req.body.wage_schedule),
-        numberOrNull(req.body.journeyworker_wage),
-        req.session.user.id,
-      ]
-    );
+    const s = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [
+      req.session.user.id,
+    ]);
+    if (!s.rows.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Student profile not found. Contact AEI.")
+      );
+    }
+
+    await queueStudentChange({
+      studentId: s.rows[0].id,
+      userId: req.session.user.id,
+      section: "occupation",
+      changes: {
+        occupation_name: cleanText(req.body.occupation_name),
+        occupation_code: cleanText(req.body.occupation_code),
+        enrollment_date: req.body.enrollment_date || null,
+        probationary_period_hours: numberOrNull(req.body.probationary_period_hours),
+        term_remaining_hours: numberOrNull(req.body.term_remaining_hours),
+        expected_completion_date: req.body.expected_completion_date || null,
+        otjl_credit_hours: numberOrNull(req.body.otjl_credit_hours),
+        related_instruction_credit_hours: numberOrNull(
+          req.body.related_instruction_credit_hours
+        ),
+        related_instruction_provider: cleanText(req.body.related_instruction_provider),
+        entry_wage: numberOrNull(req.body.entry_wage),
+        entry_wage_units: cleanText(req.body.entry_wage_units),
+        wage_schedule: cleanText(req.body.wage_schedule),
+        journeyworker_wage: numberOrNull(req.body.journeyworker_wage),
+      },
+    });
 
     return res.redirect(
-      "/student?msg=" + encodeURIComponent("Occupation details updated.")
+      "/student?msg=" + encodeURIComponent("Update submitted for admin approval.")
     );
   })
 );
@@ -729,33 +911,36 @@ app.post(
     const enrollmentDate = req.body.enrollment_date ? req.body.enrollment_date : null;
     const exitDate = req.body.exit_date ? req.body.exit_date : null;
 
-    await pool.query(
-      `UPDATE students
-       SET program_name=$1,
-           provider_program_id=$2,
-           program_system_id=$3,
-           student_id_no=$4,
-           student_id_type=$5,
-           enrollment_date=$6,
-           exit_date=$7,
-           exit_type=$8,
-           credential=$9
-       WHERE user_id=$10`,
-      [
-        cleanText(req.body.program_name),
-        cleanText(req.body.provider_program_id),
-        cleanText(req.body.program_system_id),
-        cleanText(req.body.student_id_no),
-        cleanText(req.body.student_id_type),
-        enrollmentDate,
-        exitDate,
-        cleanText(req.body.exit_type),
-        cleanText(req.body.credential),
-        req.session.user.id,
-      ]
-    );
+    const s = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [
+      req.session.user.id,
+    ]);
+    if (!s.rows.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Student profile not found. Contact AEI.")
+      );
+    }
 
-    return res.redirect("/student?msg=" + encodeURIComponent("RAPIDS fields updated."));
+    await queueStudentChange({
+      studentId: s.rows[0].id,
+      userId: req.session.user.id,
+      section: "rapids",
+      changes: {
+        program_name: cleanText(req.body.program_name),
+        provider_program_id: cleanText(req.body.provider_program_id),
+        program_system_id: cleanText(req.body.program_system_id),
+        student_id_no: cleanText(req.body.student_id_no),
+        student_id_type: cleanText(req.body.student_id_type),
+        enrollment_date: enrollmentDate,
+        exit_date: exitDate,
+        exit_type: cleanText(req.body.exit_type),
+        credential: cleanText(req.body.credential),
+      },
+    });
+
+    return res.redirect(
+      "/student?msg=" + encodeURIComponent("Update submitted for admin approval.")
+    );
   })
 );
 
@@ -785,8 +970,8 @@ app.post(
 
     await pool.query(
       `INSERT INTO student_documents
-       (student_id, uploaded_by_user_id, doc_type, title, original_filename, stored_filename, mime_type, file_size_bytes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+       (student_id, uploaded_by_user_id, doc_type, title, original_filename, stored_filename, mime_type, file_size_bytes, approval_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
         s.rows[0].id,
         req.session.user.id,
@@ -796,10 +981,14 @@ app.post(
         req.file.filename,
         req.file.mimetype || "application/octet-stream",
         Number(req.file.size || 0),
+        "pending",
       ]
     );
 
-    return res.redirect("/student?msg=" + encodeURIComponent("Document uploaded"));
+    return res.redirect(
+      "/student?msg=" +
+        encodeURIComponent("Document uploaded and awaiting admin approval.")
+    );
   })
 );
 
@@ -938,48 +1127,48 @@ app.post(
            city=$3,
            state=$4,
            zip_code=$5,
-           ein=$6,
-           naics_code=$7,
-           start_date=$8,
-           inmate_program=$9,
-           contact_first_name=$10,
-           contact_last_name=$11,
-           contact_address=$12,
-           contact_city=$13,
-           contact_state=$14,
-           contact_zip=$15,
-           contact_email=$16,
-           contact_phone=$17,
-           contact_extension=$18,
-           contact_same_as_employer=$19
-       WHERE user_id=$20`,
+           phone=$6,
+           ein=$7,
+           naics_code=$8,
+           start_date=$9,
+           inmate_program=$10,
+           contact_first_name=$11,
+           contact_last_name=$12,
+           contact_address=$13,
+           contact_city=$14,
+           contact_state=$15,
+           contact_zip=$16,
+           contact_email=$17,
+           contact_phone=$18,
+           contact_extension=$19,
+           contact_same_as_employer=$20
+       WHERE user_id=$21`,
       [
         cleanText(req.body.company_name),
         cleanText(req.body.address),
         cleanText(req.body.city),
         cleanText(req.body.state),
         cleanText(req.body.zip_code),
+        cleanText(req.body.phone),
         cleanText(req.body.ein),
         cleanText(req.body.naics_code),
         req.body.start_date || null,
         cleanText(req.body.inmate_program),
         cleanText(req.body.contact_first_name),
         cleanText(req.body.contact_last_name),
-        cleanText(contactAddress.contact_address ?? req.body.contact_address),
-        cleanText(contactAddress.contact_city ?? req.body.contact_city),
-        cleanText(contactAddress.contact_state ?? req.body.contact_state),
-        cleanText(contactAddress.contact_zip ?? req.body.contact_zip),
+        contactAddress.contact_address || cleanText(req.body.contact_address),
+        contactAddress.contact_city || cleanText(req.body.contact_city),
+        contactAddress.contact_state || cleanText(req.body.contact_state),
+        contactAddress.contact_zip || cleanText(req.body.contact_zip),
         cleanText(req.body.contact_email),
         cleanText(req.body.contact_phone),
         cleanText(req.body.contact_extension),
-        contactSameAsEmployer,
+        contactAddress.sameAsEmployer,
         req.session.user.id,
       ]
     );
 
-    return res.redirect(
-      "/employer?msg=" + encodeURIComponent("Employer profile updated.")
-    );
+    return res.redirect("/employer?msg=" + encodeURIComponent("Employer profile updated."));
   })
 );
 
@@ -1187,7 +1376,7 @@ app.get(
       return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
     }
 
-    const docs = await pool.query(
+    const documents = await pool.query(
       `SELECT d.*, u.email AS uploader_email
        FROM student_documents d
        LEFT JOIN users u ON u.id = d.uploaded_by_user_id
@@ -1196,17 +1385,14 @@ app.get(
       [studentId]
     );
 
-    const readiness = rapidsReadiness(s.rows[0]);
-
     res.render("admin-student", {
       user: req.session.user,
       student: s.rows[0],
-      docs: docs.rows,
-      readiness,
       LEVELS,
       STUDENT_STATUSES,
       DOC_TYPES,
       STUDENT_ID_TYPES,
+      documents: documents.rows,
       message: req.query.msg || null,
     });
   })
@@ -1231,6 +1417,8 @@ app.post(
       "sex",
       "employment_status",
       "pre_apprenticeship",
+      "level",
+      "status",
     ];
     const missing = requiredFields.filter((f) => isBlank(req.body[f]));
     const ssnNotProvided = req.body.ssn_not_provided === "on";
@@ -1366,6 +1554,7 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
+
     const requiredFields = [
       "ethnicity",
       "race",
@@ -1412,6 +1601,7 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
+
     const requiredFields = [
       "occupation_name",
       "occupation_code",
@@ -1497,8 +1687,8 @@ app.post(
 
     await pool.query(
       `INSERT INTO student_documents
-       (student_id, uploaded_by_user_id, doc_type, title, original_filename, stored_filename, mime_type, file_size_bytes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+       (student_id, uploaded_by_user_id, doc_type, title, original_filename, stored_filename, mime_type, file_size_bytes, approval_status, approved_at, approved_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10)`,
       [
         studentId,
         req.session.user.id,
@@ -1508,6 +1698,8 @@ app.post(
         req.file.filename,
         req.file.mimetype || "application/octet-stream",
         Number(req.file.size || 0),
+        "approved",
+        req.session.user.id,
       ]
     );
 
@@ -1524,7 +1716,9 @@ app.get(
   wrap(async (req, res) => {
     const docId = Number(req.params.docId);
 
-    const d = await pool.query(`SELECT * FROM student_documents WHERE id=$1`, [docId]);
+    const d = await pool.query(`SELECT * FROM student_documents WHERE id=$1`, [
+      docId,
+    ]);
     if (!d.rows.length) return res.status(404).send("Not found");
 
     const doc = d.rows[0];
@@ -1546,14 +1740,12 @@ app.post(
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
 
-    const s = await pool.query(`SELECT user_id FROM students WHERE id=$1`, [studentId]);
-    if (!s.rows.length) {
+    const r = await pool.query(`SELECT id FROM students WHERE id=$1`, [studentId]);
+    if (!r.rows.length) {
       return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
     }
 
-    const userId = s.rows[0].user_id;
-    await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
-
+    await pool.query(`DELETE FROM students WHERE id=$1`, [studentId]);
     return res.redirect("/admin?msg=" + encodeURIComponent("Student deleted"));
   })
 );
@@ -1574,12 +1766,25 @@ app.get(
     );
 
     if (!e.rows.length) {
-      return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
+      return res.redirect(
+        "/admin?msg=" + encodeURIComponent("Employer not found")
+      );
     }
+
+    const documents = await pool.query(
+      `SELECT d.*, u.email AS uploader_email
+       FROM employer_documents d
+       LEFT JOIN users u ON u.id = d.uploaded_by_user_id
+       WHERE d.employer_id = $1
+       ORDER BY d.created_at DESC`,
+      [employerId]
+    );
 
     res.render("admin-employer", {
       user: req.session.user,
       employer: e.rows[0],
+      DOC_TYPES,
+      documents: documents.rows,
       message: req.query.msg || null,
     });
   })
@@ -1634,20 +1839,20 @@ app.post(
       );
     }
 
-    const current = await pool.query(
+    const { rows } = await pool.query(
       `SELECT address, city, state, zip_code
        FROM employers
        WHERE id = $1`,
       [employerId]
     );
-    if (!current.rows.length) {
+    if (!rows.length) {
       return res.redirect(
         `/admin/employers/${employerId}?msg=` +
-          encodeURIComponent("Employer not found")
+          encodeURIComponent("Employer profile not found.")
       );
     }
 
-    const contactAddress = applyContactAddress(req.body, current.rows[0]);
+    const contactAddress = applyContactAddress(req.body, rows[0]);
 
     await pool.query(
       `UPDATE employers
@@ -1656,48 +1861,50 @@ app.post(
            city=$3,
            state=$4,
            zip_code=$5,
-           ein=$6,
-           naics_code=$7,
-           start_date=$8,
-           inmate_program=$9,
-           contact_first_name=$10,
-           contact_last_name=$11,
-           contact_address=$12,
-           contact_city=$13,
-           contact_state=$14,
-           contact_zip=$15,
-           contact_email=$16,
-           contact_phone=$17,
-           contact_extension=$18,
-           contact_same_as_employer=$19
-       WHERE id=$20`,
+           phone=$6,
+           ein=$7,
+           naics_code=$8,
+           start_date=$9,
+           inmate_program=$10,
+           contact_first_name=$11,
+           contact_last_name=$12,
+           contact_address=$13,
+           contact_city=$14,
+           contact_state=$15,
+           contact_zip=$16,
+           contact_email=$17,
+           contact_phone=$18,
+           contact_extension=$19,
+           contact_same_as_employer=$20
+       WHERE id=$21`,
       [
         cleanText(req.body.company_name),
         cleanText(req.body.address),
         cleanText(req.body.city),
         cleanText(req.body.state),
         cleanText(req.body.zip_code),
+        cleanText(req.body.phone),
         cleanText(req.body.ein),
         cleanText(req.body.naics_code),
         req.body.start_date || null,
         cleanText(req.body.inmate_program),
         cleanText(req.body.contact_first_name),
         cleanText(req.body.contact_last_name),
-        cleanText(contactAddress.contact_address ?? req.body.contact_address),
-        cleanText(contactAddress.contact_city ?? req.body.contact_city),
-        cleanText(contactAddress.contact_state ?? req.body.contact_state),
-        cleanText(contactAddress.contact_zip ?? req.body.contact_zip),
+        contactAddress.contact_address || cleanText(req.body.contact_address),
+        contactAddress.contact_city || cleanText(req.body.contact_city),
+        contactAddress.contact_state || cleanText(req.body.contact_state),
+        contactAddress.contact_zip || cleanText(req.body.contact_zip),
         cleanText(req.body.contact_email),
         cleanText(req.body.contact_phone),
         cleanText(req.body.contact_extension),
-        contactSameAsEmployer,
+        contactAddress.sameAsEmployer,
         employerId,
       ]
     );
 
     return res.redirect(
       `/admin/employers/${employerId}?msg=` +
-        encodeURIComponent("Employer profile updated.")
+        encodeURIComponent("Employer profile updated")
     );
   })
 );
@@ -1708,36 +1915,20 @@ app.post(
   wrap(async (req, res) => {
     const employerId = Number(req.params.id);
 
-    const e = await pool.query(`SELECT user_id FROM employers WHERE id=$1`, [employerId]);
-    if (!e.rows.length) {
-      return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
+    const r = await pool.query(`SELECT id FROM employers WHERE id=$1`, [
+      employerId,
+    ]);
+    if (!r.rows.length) {
+      return res.redirect(
+        "/admin?msg=" + encodeURIComponent("Employer not found")
+      );
     }
 
-    const userId = e.rows[0].user_id;
-    await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
-
+    await pool.query(`DELETE FROM employers WHERE id=$1`, [employerId]);
     return res.redirect("/admin?msg=" + encodeURIComponent("Employer deleted"));
   })
 );
 
-/* ===================== ERROR HANDLER ===================== */
-app.use((err, req, res, next) => {
-  console.error("❌ Unhandled error:", err);
-  res.status(500).send("Server error. Check logs.");
-});
-
-/* ===================== START ===================== */
 app.listen(PORT, () => {
-  console.log(`🚀 AEI portal running on port ${PORT}`);
-});
-
-/* ===================== ROUTE LIST ===================== */
-app.get("/__routes", (req, res) => {
-  res.json(
-    app._router.stack
-      .filter((r) => r.route)
-      .map(
-        (r) => Object.keys(r.route.methods)[0].toUpperCase() + " " + r.route.path
-      )
-  );
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
