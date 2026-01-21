@@ -192,6 +192,22 @@ async function initDb() {
       );
     `);
 
+    /* ================= EMPLOYER DOCUMENTS ================= */
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS employer_documents (
+        id BIGSERIAL PRIMARY KEY,
+        employer_id BIGINT REFERENCES employers(id) ON DELETE CASCADE,
+        uploaded_by_user_id BIGINT REFERENCES users(id),
+        doc_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        original_filename TEXT NOT NULL,
+        stored_filename TEXT NOT NULL,
+        mime_type TEXT,
+        file_size_bytes BIGINT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     /* ================= MESSAGE BOARD ================= */
     await client.query(`
       CREATE TABLE IF NOT EXISTS messages (
