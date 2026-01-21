@@ -492,14 +492,21 @@ app.get(
       );
     }
 
-    const documents = [];
+    const documents = await pool.query(
+      `SELECT d.*, u.email AS uploader_email
+       FROM student_documents d
+       LEFT JOIN users u ON u.id = d.uploaded_by_user_id
+       WHERE d.student_id = $1
+       ORDER BY d.created_at DESC`,
+      [r.rows[0].id]
+    );
 
     res.render("student", {
       user: req.session.user,
       student: r.rows[0],
       DOC_TYPES,
       STUDENT_ID_TYPES,
-      documents,
+      documents: documents.rows,
       message: req.query.msg || null,
     });
   })
@@ -752,6 +759,79 @@ app.post(
   })
 );
 
+app.post(
+  "/student/docs/upload",
+  requireRole("student"),
+  upload.single("doc_file"),
+  wrap(async (req, res) => {
+    if (!req.file) {
+      return res.redirect(
+        "/student?msg=" + encodeURIComponent("No file selected")
+      );
+    }
+
+    const s = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [
+      req.session.user.id,
+    ]);
+    if (!s.rows.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Student profile not found. Contact AEI.")
+      );
+    }
+
+    const docType = cleanText(req.body.doc_type);
+    const title = cleanText(req.body.title);
+
+    await pool.query(
+      `INSERT INTO student_documents
+       (student_id, uploaded_by_user_id, doc_type, title, original_filename, stored_filename, mime_type, file_size_bytes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        s.rows[0].id,
+        req.session.user.id,
+        docType || "Other",
+        title || req.file.originalname,
+        req.file.originalname,
+        req.file.filename,
+        req.file.mimetype || "application/octet-stream",
+        Number(req.file.size || 0),
+      ]
+    );
+
+    return res.redirect("/student?msg=" + encodeURIComponent("Document uploaded"));
+  })
+);
+
+app.get(
+  "/student/docs/:docId/download",
+  requireRole("student"),
+  wrap(async (req, res) => {
+    const docId = Number(req.params.docId);
+
+    const s = await pool.query(`SELECT id FROM students WHERE user_id=$1`, [
+      req.session.user.id,
+    ]);
+    if (!s.rows.length) return res.status(404).send("Not found");
+
+    const d = await pool.query(
+      `SELECT * FROM student_documents WHERE id=$1 AND student_id=$2`,
+      [docId, s.rows[0].id]
+    );
+    if (!d.rows.length) return res.status(404).send("Not found");
+
+    const doc = d.rows[0];
+    const filePath = path.join(uploadDir, doc.stored_filename);
+    if (!fs.existsSync(filePath)) return res.status(404).send("File missing");
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${doc.original_filename.replace(/"/g, "")}"`
+    );
+    return res.download(filePath);
+  })
+);
+
 app.get(
   "/employer",
   requireRole("employer"),
@@ -770,13 +850,20 @@ app.get(
       );
     }
 
-    const documents = [];
+    const documents = await pool.query(
+      `SELECT d.*, u.email AS uploader_email
+       FROM employer_documents d
+       LEFT JOIN users u ON u.id = d.uploaded_by_user_id
+       WHERE d.employer_id = $1
+       ORDER BY d.created_at DESC`,
+      [r.rows[0].id]
+    );
 
     res.render("employer", {
       user: req.session.user,
       employer: r.rows[0],
       DOC_TYPES,
-      documents,
+      documents: documents.rows,
       message: req.query.msg || null,
     });
   })
@@ -893,6 +980,79 @@ app.post(
     return res.redirect(
       "/employer?msg=" + encodeURIComponent("Employer profile updated.")
     );
+  })
+);
+
+app.post(
+  "/employer/docs/upload",
+  requireRole("employer"),
+  upload.single("doc_file"),
+  wrap(async (req, res) => {
+    if (!req.file) {
+      return res.redirect(
+        "/employer?msg=" + encodeURIComponent("No file selected")
+      );
+    }
+
+    const e = await pool.query(`SELECT id FROM employers WHERE user_id=$1`, [
+      req.session.user.id,
+    ]);
+    if (!e.rows.length) {
+      return res.redirect(
+        "/employer?msg=" +
+          encodeURIComponent("Employer profile not found. Contact AEI.")
+      );
+    }
+
+    const docType = cleanText(req.body.doc_type);
+    const title = cleanText(req.body.title);
+
+    await pool.query(
+      `INSERT INTO employer_documents
+       (employer_id, uploaded_by_user_id, doc_type, title, original_filename, stored_filename, mime_type, file_size_bytes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        e.rows[0].id,
+        req.session.user.id,
+        docType || "Other",
+        title || req.file.originalname,
+        req.file.originalname,
+        req.file.filename,
+        req.file.mimetype || "application/octet-stream",
+        Number(req.file.size || 0),
+      ]
+    );
+
+    return res.redirect("/employer?msg=" + encodeURIComponent("Document uploaded"));
+  })
+);
+
+app.get(
+  "/employer/docs/:docId/download",
+  requireRole("employer"),
+  wrap(async (req, res) => {
+    const docId = Number(req.params.docId);
+
+    const e = await pool.query(`SELECT id FROM employers WHERE user_id=$1`, [
+      req.session.user.id,
+    ]);
+    if (!e.rows.length) return res.status(404).send("Not found");
+
+    const d = await pool.query(
+      `SELECT * FROM employer_documents WHERE id=$1 AND employer_id=$2`,
+      [docId, e.rows[0].id]
+    );
+    if (!d.rows.length) return res.status(404).send("Not found");
+
+    const doc = d.rows[0];
+    const filePath = path.join(uploadDir, doc.stored_filename);
+    if (!fs.existsSync(filePath)) return res.status(404).send("File missing");
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${doc.original_filename.replace(/"/g, "")}"`
+    );
+    return res.download(filePath);
   })
 );
 
@@ -1317,7 +1477,7 @@ app.post(
   })
 );
 
-// ADMIN upload/download only (student/employer vault wiring is next round)
+// ADMIN upload/download for student records
 app.post(
   "/admin/students/:id/docs/upload",
   requireRole("admin"),
