@@ -1,4 +1,3 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/package.json b/package.json
 index dc677d1881b31082f78e5d8cce0d64d2298d1ae0..46b96f6749138fb494e09ed5988a3993da3c2be0 100644
 --- a/package.json
@@ -28,6 +27,3 @@ index dc677d1881b31082f78e5d8cce0d64d2298d1ae0..46b96f6749138fb494e09ed5988a3993
      "pg": "^8.11.5"
    }
  }
- 
-EOF
-)
