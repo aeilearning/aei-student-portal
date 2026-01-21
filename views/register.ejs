@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Request Access</title>
+  <title>Create Account</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body class="container">
 
   <div class="card">
     <div class="header">
-      <h1>Request Access</h1>
-      <p class="muted">Submit a request and AEI will contact you if approved.</p>
+      <h1>Create Your Account</h1>
+      <p class="muted">Create your login and continue directly to your profile.</p>
     </div>
 
     <% if (message) { %>
@@ -21,7 +21,7 @@
     <form method="POST" action="/register" class="stack">
       <div class="stack">
         <label>Email</label>
-        <input name="email" type="email" required />
+        <input name="email" type="email" autocomplete="email" required />
       </div>
 
       <div class="stack">
@@ -34,11 +34,27 @@
       </div>
 
       <div class="stack">
+        <label>Password</label>
+        <input name="password" type="password" autocomplete="new-password" minlength="8" required />
+      </div>
+
+      <div class="stack">
+        <label>Confirm Password</label>
+        <input
+          name="confirm_password"
+          type="password"
+          autocomplete="new-password"
+          minlength="8"
+          required
+        />
+      </div>
+
+      <div class="stack">
         <label>Message (optional)</label>
         <textarea name="note" rows="4" placeholder="Any details AEI should know…"></textarea>
       </div>
 
-      <button class="btn" type="submit">Submit Request</button>
+      <button class="btn" type="submit">Create Account</button>
     </form>
 
     <div class="divider"></div>
