@@ -1,4 +1,3 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/db.js b/db.js
 index f9f6511f100d4483203b5ff6c1a4f69127653b3b..de23d3d878cd899b6d8688ec199989457eedd839 100644
 --- a/db.js
@@ -187,6 +186,3 @@ index f9f6511f100d4483203b5ff6c1a4f69127653b3b..de23d3d878cd899b6d8688ec19998945
          mime_type TEXT,
          file_size_bytes BIGINT,
          created_at TIMESTAMPTZ DEFAULT NOW()
- 
-EOF
-)
