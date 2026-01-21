@@ -15,6 +15,16 @@
     <a class="link" href="/logout">Logout</a>
   </div>
 
+  <% const portalNotices = [portalMessages?.both, portalMessages?.student].filter(m => m && m.trim()); %>
+  <% if (portalNotices.length) { %>
+    <div class="card">
+      <h2>Message from AEI</h2>
+      <% portalNotices.forEach(note => { %>
+        <p class="muted"><%= note %></p>
+      <% }) %>
+    </div>
+  <% } %>
+
   <% if (message) { %>
     <div class="alert"><%= message %></div>
   <% } %>
@@ -84,7 +94,7 @@
 
       <div class="stack">
         <label>Zip Code *</label>
-        <input name="zip_code" value="<%= student.zip_code || '' %>" pattern="\d{5}" required />
+        <input name="zip_code" value="<%= student.zip_code || '' %>" pattern="\\d{5}" required />
       </div>
 
       <div class="stack">
@@ -116,7 +126,7 @@
         <input
           type="date"
           name="date_of_birth"
-          value="<%= student.date_of_birth ? new Date(student.date_of_birth).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.date_of_birth) %>"
           required
         />
       </div>
@@ -271,7 +281,7 @@
         <input
           type="date"
           name="enrollment_date"
-          value="<%= student.enrollment_date ? new Date(student.enrollment_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.enrollment_date) %>"
           required
         />
       </div>
@@ -281,7 +291,7 @@
         <input
           type="date"
           name="exit_date"
-          value="<%= student.exit_date ? new Date(student.exit_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.exit_date) %>"
         />
       </div>
 
@@ -315,11 +325,11 @@
       </div>
 
       <div class="stack">
-        <label>Enrollment Date *</label>
+        <label>Date Apprenticeship Begins *</label>
         <input
           type="date"
           name="enrollment_date"
-          value="<%= student.enrollment_date ? new Date(student.enrollment_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.enrollment_date) %>"
           required
         />
       </div>
@@ -339,7 +349,7 @@
         <input
           type="date"
           name="expected_completion_date"
-          value="<%= student.expected_completion_date ? new Date(student.expected_completion_date).toISOString().slice(0,10) : '' %>"
+          value="<%= formatDateInput(student.expected_completion_date) %>"
           required
         />
       </div>
