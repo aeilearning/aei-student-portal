@@ -188,7 +188,32 @@ async function initDb() {
         stored_filename TEXT NOT NULL,
         mime_type TEXT,
         file_size_bytes BIGINT,
+        approval_status TEXT DEFAULT 'approved',
+        approved_at TIMESTAMPTZ,
+        approved_by BIGINT REFERENCES users(id),
         created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      ALTER TABLE student_documents
+      ADD COLUMN IF NOT EXISTS approval_status TEXT DEFAULT 'approved',
+      ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS approved_by BIGINT REFERENCES users(id);
+    `);
+
+    /* ================= STUDENT PROFILE CHANGE REQUESTS ================= */
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_profile_change_requests (
+        id BIGSERIAL PRIMARY KEY,
+        student_id BIGINT REFERENCES students(id) ON DELETE CASCADE,
+        requested_by_user_id BIGINT REFERENCES users(id),
+        section TEXT NOT NULL,
+        changes JSONB NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        reviewed_at TIMESTAMPTZ,
+        reviewed_by BIGINT REFERENCES users(id)
       );
     `);
 
