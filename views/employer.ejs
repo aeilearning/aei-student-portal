@@ -40,12 +40,12 @@
 
       <div class="stack">
         <label>State *</label>
-        <input name="state" value="<%= employer.state || '' %>" required />
+        <input name="state" value="<%= employer.state || '' %>" maxlength="2" required />
       </div>
 
       <div class="stack">
         <label>Zip *</label>
-        <input name="zip_code" value="<%= employer.zip_code || '' %>" required />
+        <input name="zip_code" value="<%= employer.zip_code || '' %>" pattern="\\d{5}" required />
       </div>
 
       <div class="stack">
@@ -109,12 +109,12 @@
 
       <div class="stack">
         <label>Contact State *</label>
-        <input name="contact_state" value="<%= employer.contact_state || '' %>" />
+        <input name="contact_state" value="<%= employer.contact_state || '' %>" maxlength="2" />
       </div>
 
       <div class="stack">
         <label>Contact Zip *</label>
-        <input name="contact_zip" value="<%= employer.contact_zip || '' %>" />
+        <input name="contact_zip" value="<%= employer.contact_zip || '' %>" pattern="\\d{5}" />
       </div>
 
       <div class="stack">
