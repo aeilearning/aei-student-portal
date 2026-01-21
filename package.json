@@ -1,24 +1,33 @@
-{
-  "name": "aei-student-portal",
-  "version": "1.0.0",
-  "description": "AEI Learning Student & Employer Compliance Portal",
-  "main": "server.js",
-  "type": "commonjs",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "dependencies": {
-    "archiver": "^7.0.1",
-    "bcryptjs": "^2.4.3",
-    "csv-stringify": "^6.5.0",
-    "ejs": "^3.1.9",
-    "express": "^4.19.2",
-    "express-session": "^1.17.3",
-    "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.13",
-    "pg": "^8.11.5"
-  }
-}
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/package.json b/package.json
+index dc677d1881b31082f78e5d8cce0d64d2298d1ae0..46b96f6749138fb494e09ed5988a3993da3c2be0 100644
+--- a/package.json
++++ b/package.json
+@@ -1,23 +1,24 @@
+ {
+   "name": "aei-student-portal",
+   "version": "1.0.0",
+   "description": "AEI Learning Student & Employer Compliance Portal",
+   "main": "server.js",
+   "type": "commonjs",
+   "scripts": {
+     "start": "node server.js"
+   },
+   "engines": {
+     "node": ">=18"
+   },
+   "dependencies": {
+     "archiver": "^7.0.1",
+     "bcryptjs": "^2.4.3",
+     "csv-stringify": "^6.5.0",
+     "ejs": "^3.1.9",
+     "express": "^4.19.2",
+     "express-session": "^1.17.3",
+     "multer": "^1.4.5-lts.1",
++    "nodemailer": "^6.9.13",
+     "pg": "^8.11.5"
+   }
+ }
+ 
+EOF
+)
