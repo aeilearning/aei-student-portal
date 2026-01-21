@@ -75,12 +75,12 @@
 
       <div class="stack">
         <label>State *</label>
-        <input name="state" value="<%= student.state || '' %>" required />
+        <input name="state" value="<%= student.state || '' %>" maxlength="2" required />
       </div>
 
       <div class="stack">
         <label>Zip Code *</label>
-        <input name="zip_code" value="<%= student.zip_code || '' %>" required />
+        <input name="zip_code" value="<%= student.zip_code || '' %>" pattern="\\d{5}" required />
       </div>
 
       <div class="stack">
@@ -124,7 +124,7 @@
           <option value="Male" <%= student.sex === 'Male' ? 'selected' : '' %>>Male</option>
           <option value="Female" <%= student.sex === 'Female' ? 'selected' : '' %>>Female</option>
           <option value="Non-Binary" <%= student.sex === 'Non-Binary' ? 'selected' : '' %>>Non-Binary</option>
-          <option value="Participant Did Not Self-Identify" <%= student.sex === 'Participant Did Not Self-Identify' ? 'selected' : '' %>>Participant Did Not Self-Identify</option>
+          <option value="Unknown" <%= student.sex === 'Unknown' ? 'selected' : '' %>>Unknown</option>
         </select>
       </div>
 
@@ -132,8 +132,8 @@
         <label>Employment Status *</label>
         <select name="employment_status" required>
           <option value="">Select one</option>
-          <option value="New Employee" <%= student.employment_status === 'New Employee' ? 'selected' : '' %>>New Employee</option>
-          <option value="Current Employee" <%= student.employment_status === 'Current Employee' ? 'selected' : '' %>>Current Employee</option>
+          <option value="Employed" <%= student.employment_status === 'Employed' ? 'selected' : '' %>>Employed</option>
+          <option value="Unemployed" <%= student.employment_status === 'Unemployed' ? 'selected' : '' %>>Unemployed</option>
         </select>
       </div>
 
