@@ -65,6 +65,19 @@ create table if not exists student_documents (
   created_at timestamptz not null default now()
 );
 
+create table if not exists employer_documents (
+  id bigserial primary key,
+  employer_id bigint references employers(id) on delete cascade,
+  uploaded_by_user_id bigint references users(id),
+  doc_type text not null,
+  title text not null,
+  original_filename text not null,
+  stored_filename text not null,
+  mime_type text,
+  file_size_bytes bigint,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists messages (
   id bigserial primary key,
   target_role text not null check (target_role in ('student','employer','both','direct')),
