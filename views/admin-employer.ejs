@@ -1,157 +1,157 @@
-+<!doctype html>
-+<html>
-+<head>
-+  <meta charset="utf-8" />
-+  <title>AEI Employer Detail</title>
-+  <link rel="stylesheet" href="/styles.css" />
-+</head>
-+<body class="container">
-+
-+  <div class="topbar">
-+    <div>
-+      <h1>Employer Detail</h1>
-+      <div class="muted">
-+        <a class="link" href="/admin">← Back to Admin</a>
-+        &nbsp; • &nbsp;
-+        Logged in as <b><%= user.email %></b>
-+      </div>
-+    </div>
-+    <a class="link" href="/logout">Logout</a>
-+  </div>
-+
-+  <% if (message) { %>
-+    <div class="alert"><%= message %></div>
-+  <% } %>
-+
-+  <div class="card">
-+    <div class="row-between">
-+      <div>
-+        <h2><%= employer.email %></h2>
-+        <div class="muted">
-+          <b><%= employer.company_name || '' %></b>
-+        </div>
-+      </div>
-+    </div>
-+  </div>
-+
-+  <form method="POST" action="/admin/employers/<%= employer.id %>/update">
-+    <div class="card">
-+      <h2>Employer Information (Required)</h2>
-+      <div class="grid2">
-+        <div class="stack">
-+          <label>Employer Name *</label>
-+          <input name="company_name" value="<%= employer.company_name || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Address *</label>
-+          <input name="address" value="<%= employer.address || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>City *</label>
-+          <input name="city" value="<%= employer.city || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>State *</label>
-+          <input name="state" value="<%= employer.state || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Zip *</label>
-+          <input name="zip_code" value="<%= employer.zip_code || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>EIN</label>
-+          <input name="ein" value="<%= employer.ein || '' %>" />
-+        </div>
-+
-+        <div class="stack">
-+          <label>NAICS Code</label>
-+          <input name="naics_code" value="<%= employer.naics_code || '' %>" />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Start Date *</label>
-+          <input
-+            type="date"
-+            name="start_date"
-+            value="<%= employer.start_date ? new Date(employer.start_date).toISOString().slice(0,10) : '' %>"
-+            required
-+          />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Inmate Program? *</label>
-+          <select name="inmate_program" required>
-+            <option value="">Select one</option>
-+            <option value="Yes" <%= employer.inmate_program === 'Yes' ? 'selected' : '' %>>Yes</option>
-+            <option value="No" <%= employer.inmate_program === 'No' ? 'selected' : '' %>>No</option>
-+          </select>
-+        </div>
-+      </div>
-+    </div>
-+
-+    <div class="card">
-+      <h2>Contact Information (Required)</h2>
-+      <div class="grid2">
-+        <div class="stack">
-+          <label>Contact First Name *</label>
-+          <input name="contact_first_name" value="<%= employer.contact_first_name || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Contact Last Name *</label>
-+          <input name="contact_last_name" value="<%= employer.contact_last_name || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Contact Address *</label>
-+          <input name="contact_address" value="<%= employer.contact_address || '' %>" />
-+          <label class="small" style="margin-top:6px;">
-+            <input type="checkbox" name="contact_same_as_employer" <%= employer.contact_same_as_employer ? 'checked' : '' %> />
-+            Same as Employer's Address
-+          </label>
-+        </div>
-+
-+        <div class="stack">
-+          <label>Contact City *</label>
-+          <input name="contact_city" value="<%= employer.contact_city || '' %>" />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Contact State *</label>
-+          <input name="contact_state" value="<%= employer.contact_state || '' %>" />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Contact Zip *</label>
-+          <input name="contact_zip" value="<%= employer.contact_zip || '' %>" />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Contact Email *</label>
-+          <input name="contact_email" value="<%= employer.contact_email || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Contact Phone *</label>
-+          <input name="contact_phone" value="<%= employer.contact_phone || '' %>" required />
-+        </div>
-+
-+        <div class="stack">
-+          <label>Extension</label>
-+          <input name="contact_extension" value="<%= employer.contact_extension || '' %>" />
-+        </div>
-+      </div>
-+
-+      <div>
-+        <button>Save Employer Profile</button>
-+      </div>
-+    </div>
-+  </form>
-+
-+</body>
-+</html>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AEI Employer Detail</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="container">
+
+  <div class="topbar">
+    <div>
+      <h1>Employer Detail</h1>
+      <div class="muted">
+        <a class="link" href="/admin">← Back to Admin</a>
+        &nbsp; • &nbsp;
+        Logged in as <b><%= user.email %></b>
+      </div>
+    </div>
+    <a class="link" href="/logout">Logout</a>
+  </div>
+
+  <% if (message) { %>
+    <div class="alert"><%= message %></div>
+  <% } %>
+
+  <div class="card">
+    <div class="row-between">
+      <div>
+        <h2><%= employer.email %></h2>
+        <div class="muted">
+          <b><%= employer.company_name || '' %></b>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <form method="POST" action="/admin/employers/<%= employer.id %>/update">
+    <div class="card">
+      <h2>Employer Information (Required)</h2>
+      <div class="grid2">
+        <div class="stack">
+          <label>Employer Name *</label>
+          <input name="company_name" value="<%= employer.company_name || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>Address *</label>
+          <input name="address" value="<%= employer.address || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>City *</label>
+          <input name="city" value="<%= employer.city || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>State *</label>
+          <input name="state" value="<%= employer.state || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>Zip *</label>
+          <input name="zip_code" value="<%= employer.zip_code || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>EIN</label>
+          <input name="ein" value="<%= employer.ein || '' %>" />
+        </div>
+
+        <div class="stack">
+          <label>NAICS Code</label>
+          <input name="naics_code" value="<%= employer.naics_code || '' %>" />
+        </div>
+
+        <div class="stack">
+          <label>Start Date *</label>
+          <input
+            type="date"
+            name="start_date"
+            value="<%= employer.start_date ? new Date(employer.start_date).toISOString().slice(0,10) : '' %>"
+            required
+          />
+        </div>
+
+        <div class="stack">
+          <label>Inmate Program? *</label>
+          <select name="inmate_program" required>
+            <option value="">Select one</option>
+            <option value="Yes" <%= employer.inmate_program === 'Yes' ? 'selected' : '' %>>Yes</option>
+            <option value="No" <%= employer.inmate_program === 'No' ? 'selected' : '' %>>No</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Contact Information (Required)</h2>
+      <div class="grid2">
+        <div class="stack">
+          <label>Contact First Name *</label>
+          <input name="contact_first_name" value="<%= employer.contact_first_name || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>Contact Last Name *</label>
+          <input name="contact_last_name" value="<%= employer.contact_last_name || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>Contact Address *</label>
+          <input name="contact_address" value="<%= employer.contact_address || '' %>" />
+          <label class="small" style="margin-top:6px;">
+            <input type="checkbox" name="contact_same_as_employer" <%= employer.contact_same_as_employer ? 'checked' : '' %> />
+            Same as Employer's Address
+          </label>
+        </div>
+
+        <div class="stack">
+          <label>Contact City *</label>
+          <input name="contact_city" value="<%= employer.contact_city || '' %>" />
+        </div>
+
+        <div class="stack">
+          <label>Contact State *</label>
+          <input name="contact_state" value="<%= employer.contact_state || '' %>" />
+        </div>
+
+        <div class="stack">
+          <label>Contact Zip *</label>
+          <input name="contact_zip" value="<%= employer.contact_zip || '' %>" />
+        </div>
+
+        <div class="stack">
+          <label>Contact Email *</label>
+          <input name="contact_email" value="<%= employer.contact_email || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>Contact Phone *</label>
+          <input name="contact_phone" value="<%= employer.contact_phone || '' %>" required />
+        </div>
+
+        <div class="stack">
+          <label>Extension</label>
+          <input name="contact_extension" value="<%= employer.contact_extension || '' %>" />
+        </div>
+      </div>
+
+      <div>
+        <button>Save Employer Profile</button>
+      </div>
+    </div>
+  </form>
+
+</body>
+</html>
