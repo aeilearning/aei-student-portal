@@ -74,14 +74,14 @@
         </div>
 
         <div class="stack">
-          <label>Start Date *</label>
-          <input
-            type="date"
-            name="start_date"
-            value="<%= employer.start_date ? new Date(employer.start_date).toISOString().slice(0,10) : '' %>"
-            required
-          />
-        </div>
+        <label>Start Date *</label>
+        <input
+          type="date"
+          name="start_date"
+          value="<%= formatDateInput(employer.start_date) %>"
+          required
+        />
+      </div>
 
         <div class="stack">
           <label>Inmate Program? *</label>
