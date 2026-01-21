@@ -33,6 +33,9 @@
           • <%= student.status %>
         </div>
       </div>
+      <div class="right">
+        <div class="badge"><%= readiness.label %></div>
+      </div>
     </div>
   </div>
 
@@ -41,23 +44,23 @@
 
     <form method="POST" action="/admin/students/<%= student.id %>/update-identity" class="grid2">
       <div class="stack">
-        <label>First Name</label>
-        <input name="first_name" value="<%= student.first_name || '' %>" />
+        <label>First Name *</label>
+        <input name="first_name" value="<%= student.first_name || '' %>" required />
       </div>
 
       <div class="stack">
-        <label>Last Name</label>
-        <input name="last_name" value="<%= student.last_name || '' %>" />
+        <label>Last Name *</label>
+        <input name="last_name" value="<%= student.last_name || '' %>" required />
       </div>
 
       <div class="stack">
-        <label>Phone</label>
-        <input name="phone" value="<%= student.phone || '' %>" />
+        <label>Phone *</label>
+        <input name="phone" value="<%= student.phone || '' %>" required />
       </div>
 
       <div class="stack">
-        <label>Employer Name</label>
-        <input name="employer_name" value="<%= student.employer_name || '' %>" />
+        <label>Employer Name *</label>
+        <input name="employer_name" value="<%= student.employer_name || '' %>" required />
       </div>
 
       <div class="stack">
@@ -85,36 +88,97 @@
   </div>
 
   <div class="card">
-    <div class="row-between">
-      <div>
-        <h2>Document Vault</h2>
-        <div class="muted small">
-          Admin upload + download. Files are grouped by required category for fast review.
-        </div>
-      </div>
-      <div class="right">
-        <a class="btn" href="/admin/students/<%= student.id %>/docs/download-all">Download All (ZIP)</a>
-      </div>
-    </div>
+    <h2>RAPIDS Fields (Required)</h2>
 
-    <form method="POST" action="/admin/students/<%= student.id %>/docs/upload" enctype="multipart/form-data" class="grid2">
+    <form method="POST" action="/admin/students/<%= student.id %>/update-rapids" class="grid2">
       <div class="stack">
-        <label>Category (required)</label>
-        <select name="category" required>
-          <% DOC_CATEGORIES.forEach(c => { %>
-            <option value="<%= c %>"><%= c %></option>
+        <label>Program Name *</label>
+        <input name="program_name" value="<%= student.program_name || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Provider Program ID *</label>
+        <input name="provider_program_id" value="<%= student.provider_program_id || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Program System ID *</label>
+        <input name="program_system_id" value="<%= student.program_system_id || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Student ID Number *</label>
+        <input name="student_id_no" value="<%= student.student_id_no || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Student ID Type *</label>
+        <select name="student_id_type" required>
+          <% STUDENT_ID_TYPES.forEach(t => { %>
+            <option value="<%= t %>" <%= student.student_id_type === t ? 'selected' : '' %>><%= t %></option>
           <% }) %>
         </select>
       </div>
 
       <div class="stack">
-        <label>Title (optional but recommended)</label>
+        <label>Enrollment Date *</label>
+        <input
+          type="date"
+          name="enrollment_date"
+          value="<%= student.enrollment_date ? new Date(student.enrollment_date).toISOString().slice(0,10) : '' %>"
+          required
+        />
+      </div>
+
+      <div class="stack">
+        <label>Exit Date</label>
+        <input
+          type="date"
+          name="exit_date"
+          value="<%= student.exit_date ? new Date(student.exit_date).toISOString().slice(0,10) : '' %>"
+        />
+      </div>
+
+      <div class="stack">
+        <label>Exit Type</label>
+        <input name="exit_type" value="<%= student.exit_type || '' %>" />
+      </div>
+
+      <div class="stack">
+        <label>Credential</label>
+        <input name="credential" value="<%= student.credential || '' %>" />
+      </div>
+
+      <div>
+        <button>Save RAPIDS Fields</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Document Vault</h2>
+    <div class="muted small">
+      Admin upload + download. Files are grouped by document type for review.
+    </div>
+
+    <form method="POST" action="/admin/students/<%= student.id %>/docs/upload" enctype="multipart/form-data" class="grid2">
+      <div class="stack">
+        <label>Document Type *</label>
+        <select name="doc_type" required>
+          <% DOC_TYPES.forEach(t => { %>
+            <option value="<%= t %>"><%= t %></option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Title (optional)</label>
         <input name="title" placeholder="e.g. CO Apprentice Card - 2026" />
       </div>
 
       <div class="stack">
-        <label>File</label>
-        <input type="file" name="file" required />
+        <label>File *</label>
+        <input type="file" name="doc_file" required />
       </div>
 
       <div>
@@ -124,32 +188,30 @@
 
     <hr />
 
-    <% if (!groupedDocs || !groupedDocs.length) { %>
+    <% if (!docs || !docs.length) { %>
       <div class="muted">No documents uploaded yet.</div>
     <% } else { %>
-      <% groupedDocs.forEach(group => { %>
-        <h3><%= group.category %> (<%= group.docs.length %>)</h3>
-        <table>
+      <table>
+        <tr>
+          <th>Type</th>
+          <th>Title</th>
+          <th>Original Filename</th>
+          <th>Uploaded</th>
+          <th>By</th>
+          <th>Download</th>
+        </tr>
+        <% docs.forEach(d => { %>
           <tr>
-            <th>Title</th>
-            <th>Original Filename</th>
-            <th>Uploaded</th>
-            <th>By</th>
-            <th>Download</th>
+            <td><%= d.doc_type %></td>
+            <td><%= d.title || d.original_filename %></td>
+            <td class="small"><%= d.original_filename %></td>
+            <td class="small"><%= new Date(d.created_at).toLocaleString() %></td>
+            <td class="small"><%= d.uploader_email || 'Unknown' %></td>
+            <td><a class="btn" href="/admin/docs/<%= d.id %>/download">Download</a></td>
           </tr>
-          <% group.docs.forEach(d => { %>
-            <tr>
-              <td><%= d.title || d.original_filename %></td>
-              <td class="small"><%= d.original_filename %></td>
-              <td class="small"><%= new Date(d.created_at).toLocaleString() %></td>
-              <td class="small"><%= d.uploader_email || 'Unknown' %></td>
-              <td><a class="btn" href="/documents/<%= d.id %>/download">Download</a></td>
-            </tr>
-          <% }) %>
-        </table>
-      <% }) %>
+        <% }) %>
+      </table>
     <% } %>
-
   </div>
 
 </body>
