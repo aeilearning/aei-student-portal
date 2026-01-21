@@ -193,6 +193,15 @@ function isBlank(v) {
   return String(v ?? "").trim() === "";
 }
 
+function formatDateInput(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+app.locals.formatDateInput = formatDateInput;
+
 function numberOrNull(value) {
   if (value === null || value === undefined || String(value).trim() === "") return null;
   const n = Number(value);
@@ -237,6 +246,18 @@ async function queueStudentChange({ studentId, userId, section, changes }) {
      VALUES ($1,$2,$3,$4)`,
     [studentId, userId, section, changes]
   );
+}
+
+async function getPortalMessages() {
+  const { rows } = await pool.query(
+    `SELECT target_role, message FROM portal_messages`
+  );
+  const map = new Map(rows.map((row) => [row.target_role, row.message]));
+  return {
+    student: map.get("student") || "",
+    employer: map.get("employer") || "",
+    both: map.get("both") || "",
+  };
 }
 
 /* ===================== EMAIL ===================== */
@@ -503,6 +524,7 @@ app.get(
   "/admin",
   requireRole("admin"),
   wrap(async (req, res) => {
+    const portalMessages = await getPortalMessages();
     const students = await pool.query(
       `SELECT s.*, u.email
        FROM students s
@@ -557,6 +579,7 @@ app.get(
 
     res.render("admin", {
       user: req.session.user,
+      portalMessages,
       students: studentsWithIndicators,
       employers: employers.rows,
       pendingChanges: pendingChanges.rows,
@@ -565,6 +588,36 @@ app.get(
       STUDENT_STATUSES,
       message: req.query.msg || null,
     });
+  })
+);
+
+app.post(
+  "/admin/portal-messages",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const studentMessage = cleanText(req.body.student_message);
+    const employerMessage = cleanText(req.body.employer_message);
+    const bothMessage = cleanText(req.body.both_message);
+
+    const entries = [
+      ["student", studentMessage],
+      ["employer", employerMessage],
+      ["both", bothMessage],
+    ];
+
+    for (const [targetRole, message] of entries) {
+      await pool.query(
+        `INSERT INTO portal_messages (target_role, message, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (target_role)
+         DO UPDATE SET message = EXCLUDED.message, updated_at = NOW()`,
+        [targetRole, message]
+      );
+    }
+
+    return res.redirect(
+      "/admin?msg=" + encodeURIComponent("Portal messages updated.")
+    );
   })
 );
 
@@ -681,6 +734,8 @@ app.get(
       [r.rows[0].id]
     );
 
+    const portalMessages = await getPortalMessages();
+
     res.render("student", {
       user: req.session.user,
       student: r.rows[0],
@@ -688,6 +743,7 @@ app.get(
       STUDENT_ID_TYPES,
       documents: documents.rows,
       pendingChanges: pendingChanges.rows,
+      portalMessages,
       message: req.query.msg || null,
     });
   })
@@ -1048,11 +1104,14 @@ app.get(
       [r.rows[0].id]
     );
 
+    const portalMessages = await getPortalMessages();
+
     res.render("employer", {
       user: req.session.user,
       employer: r.rows[0],
       DOC_TYPES,
       documents: documents.rows,
+      portalMessages,
       message: req.query.msg || null,
     });
   })
@@ -1376,7 +1435,7 @@ app.get(
       return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
     }
 
-    const documents = await pool.query(
+    const docs = await pool.query(
       `SELECT d.*, u.email AS uploader_email
        FROM student_documents d
        LEFT JOIN users u ON u.id = d.uploaded_by_user_id
@@ -1385,14 +1444,19 @@ app.get(
       [studentId]
     );
 
+    const readiness = rapidsReadiness(s.rows[0]);
+    const documents = docs.rows;
+
     res.render("admin-student", {
       user: req.session.user,
       student: s.rows[0],
+      docs: documents,
+      documents,
+      readiness,
       LEVELS,
       STUDENT_STATUSES,
       DOC_TYPES,
       STUDENT_ID_TYPES,
-      documents: documents.rows,
       message: req.query.msg || null,
     });
   })
@@ -1417,8 +1481,6 @@ app.post(
       "sex",
       "employment_status",
       "pre_apprenticeship",
-      "level",
-      "status",
     ];
     const missing = requiredFields.filter((f) => isBlank(req.body[f]));
     const ssnNotProvided = req.body.ssn_not_provided === "on";
@@ -1554,7 +1616,6 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
-
     const requiredFields = [
       "ethnicity",
       "race",
@@ -1601,7 +1662,6 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
-
     const requiredFields = [
       "occupation_name",
       "occupation_code",
@@ -1716,9 +1776,7 @@ app.get(
   wrap(async (req, res) => {
     const docId = Number(req.params.docId);
 
-    const d = await pool.query(`SELECT * FROM student_documents WHERE id=$1`, [
-      docId,
-    ]);
+    const d = await pool.query(`SELECT * FROM student_documents WHERE id=$1`, [docId]);
     if (!d.rows.length) return res.status(404).send("Not found");
 
     const doc = d.rows[0];
@@ -1740,12 +1798,14 @@ app.post(
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
 
-    const r = await pool.query(`SELECT id FROM students WHERE id=$1`, [studentId]);
-    if (!r.rows.length) {
+    const s = await pool.query(`SELECT user_id FROM students WHERE id=$1`, [studentId]);
+    if (!s.rows.length) {
       return res.redirect("/admin?msg=" + encodeURIComponent("Student not found"));
     }
 
-    await pool.query(`DELETE FROM students WHERE id=$1`, [studentId]);
+    const userId = s.rows[0].user_id;
+    await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
+
     return res.redirect("/admin?msg=" + encodeURIComponent("Student deleted"));
   })
 );
@@ -1766,25 +1826,12 @@ app.get(
     );
 
     if (!e.rows.length) {
-      return res.redirect(
-        "/admin?msg=" + encodeURIComponent("Employer not found")
-      );
+      return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
     }
-
-    const documents = await pool.query(
-      `SELECT d.*, u.email AS uploader_email
-       FROM employer_documents d
-       LEFT JOIN users u ON u.id = d.uploaded_by_user_id
-       WHERE d.employer_id = $1
-       ORDER BY d.created_at DESC`,
-      [employerId]
-    );
 
     res.render("admin-employer", {
       user: req.session.user,
       employer: e.rows[0],
-      DOC_TYPES,
-      documents: documents.rows,
       message: req.query.msg || null,
     });
   })
@@ -1839,20 +1886,20 @@ app.post(
       );
     }
 
-    const { rows } = await pool.query(
+    const current = await pool.query(
       `SELECT address, city, state, zip_code
        FROM employers
        WHERE id = $1`,
       [employerId]
     );
-    if (!rows.length) {
+    if (!current.rows.length) {
       return res.redirect(
         `/admin/employers/${employerId}?msg=` +
-          encodeURIComponent("Employer profile not found.")
+          encodeURIComponent("Employer not found")
       );
     }
 
-    const contactAddress = applyContactAddress(req.body, rows[0]);
+    const contactAddress = applyContactAddress(req.body, current.rows[0]);
 
     await pool.query(
       `UPDATE employers
@@ -1861,50 +1908,48 @@ app.post(
            city=$3,
            state=$4,
            zip_code=$5,
-           phone=$6,
-           ein=$7,
-           naics_code=$8,
-           start_date=$9,
-           inmate_program=$10,
-           contact_first_name=$11,
-           contact_last_name=$12,
-           contact_address=$13,
-           contact_city=$14,
-           contact_state=$15,
-           contact_zip=$16,
-           contact_email=$17,
-           contact_phone=$18,
-           contact_extension=$19,
-           contact_same_as_employer=$20
-       WHERE id=$21`,
+           ein=$6,
+           naics_code=$7,
+           start_date=$8,
+           inmate_program=$9,
+           contact_first_name=$10,
+           contact_last_name=$11,
+           contact_address=$12,
+           contact_city=$13,
+           contact_state=$14,
+           contact_zip=$15,
+           contact_email=$16,
+           contact_phone=$17,
+           contact_extension=$18,
+           contact_same_as_employer=$19
+       WHERE id=$20`,
       [
         cleanText(req.body.company_name),
         cleanText(req.body.address),
         cleanText(req.body.city),
         cleanText(req.body.state),
         cleanText(req.body.zip_code),
-        cleanText(req.body.phone),
         cleanText(req.body.ein),
         cleanText(req.body.naics_code),
         req.body.start_date || null,
         cleanText(req.body.inmate_program),
         cleanText(req.body.contact_first_name),
         cleanText(req.body.contact_last_name),
-        contactAddress.contact_address || cleanText(req.body.contact_address),
-        contactAddress.contact_city || cleanText(req.body.contact_city),
-        contactAddress.contact_state || cleanText(req.body.contact_state),
-        contactAddress.contact_zip || cleanText(req.body.contact_zip),
+        cleanText(contactAddress.contact_address ?? req.body.contact_address),
+        cleanText(contactAddress.contact_city ?? req.body.contact_city),
+        cleanText(contactAddress.contact_state ?? req.body.contact_state),
+        cleanText(contactAddress.contact_zip ?? req.body.contact_zip),
         cleanText(req.body.contact_email),
         cleanText(req.body.contact_phone),
         cleanText(req.body.contact_extension),
-        contactAddress.sameAsEmployer,
+        contactSameAsEmployer,
         employerId,
       ]
     );
 
     return res.redirect(
       `/admin/employers/${employerId}?msg=` +
-        encodeURIComponent("Employer profile updated")
+        encodeURIComponent("Employer profile updated.")
     );
   })
 );
@@ -1915,20 +1960,36 @@ app.post(
   wrap(async (req, res) => {
     const employerId = Number(req.params.id);
 
-    const r = await pool.query(`SELECT id FROM employers WHERE id=$1`, [
-      employerId,
-    ]);
-    if (!r.rows.length) {
-      return res.redirect(
-        "/admin?msg=" + encodeURIComponent("Employer not found")
-      );
+    const e = await pool.query(`SELECT user_id FROM employers WHERE id=$1`, [employerId]);
+    if (!e.rows.length) {
+      return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
     }
 
-    await pool.query(`DELETE FROM employers WHERE id=$1`, [employerId]);
+    const userId = e.rows[0].user_id;
+    await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
+
     return res.redirect("/admin?msg=" + encodeURIComponent("Employer deleted"));
   })
 );
 
+/* ===================== ERROR HANDLER ===================== */
+app.use((err, req, res, next) => {
+  console.error("❌ Unhandled error:", err);
+  res.status(500).send("Server error. Check logs.");
+});
+
+/* ===================== START ===================== */
 app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`🚀 AEI portal running on port ${PORT}`);
+});
+
+/* ===================== ROUTE LIST ===================== */
+app.get("/__routes", (req, res) => {
+  res.json(
+    app._router.stack
+      .filter((r) => r.route)
+      .map(
+        (r) => Object.keys(r.route.methods)[0].toUpperCase() + " " + r.route.path
+      )
+  );
 });
