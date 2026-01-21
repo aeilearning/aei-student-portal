@@ -144,6 +144,10 @@ function cleanText(v) {
   return String(v ?? "").trim();
 }
 
+function isBlank(v) {
+  return String(v ?? "").trim() === "";
+}
+
 /* ===================== EMAIL ===================== */
 const MAIL_FROM = process.env.MAIL_FROM;
 const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL;
@@ -321,7 +325,9 @@ app.post(
 
     return res.redirect(
       "/login?msg=" +
-        encodeURIComponent("Request received. AEI will follow up if approved.")
+        encodeURIComponent(
+          "Request received. American Electrical Innovations Ltd. will follow up if approved."
+        )
     );
   })
 );
@@ -373,7 +379,10 @@ app.post(
     });
 
     return res.redirect(
-      "/login?msg=" + encodeURIComponent("Reset request received. AEI will follow up.")
+      "/login?msg=" +
+        encodeURIComponent(
+          "Reset request received. American Electrical Innovations Ltd. will follow up."
+        )
     );
   })
 );
@@ -452,9 +461,96 @@ app.get(
       user: req.session.user,
       student: r.rows[0],
       DOC_TYPES,
+      STUDENT_ID_TYPES,
       documents,
       message: req.query.msg || null,
     });
+  })
+);
+
+app.post(
+  "/student/update-identity",
+  requireRole("student"),
+  wrap(async (req, res) => {
+    const missing = ["first_name", "last_name", "phone", "employer_name"].filter((f) =>
+      isBlank(req.body[f])
+    );
+
+    if (missing.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Please complete all required identity fields.")
+      );
+    }
+
+    await pool.query(
+      `UPDATE students
+       SET first_name=$1, last_name=$2, phone=$3, employer_name=$4
+       WHERE user_id=$5`,
+      [
+        cleanText(req.body.first_name),
+        cleanText(req.body.last_name),
+        cleanText(req.body.phone),
+        cleanText(req.body.employer_name),
+        req.session.user.id,
+      ]
+    );
+
+    return res.redirect("/student?msg=" + encodeURIComponent("Profile updated."));
+  })
+);
+
+app.post(
+  "/student/update-rapids",
+  requireRole("student"),
+  wrap(async (req, res) => {
+    const required = [
+      "program_name",
+      "provider_program_id",
+      "program_system_id",
+      "student_id_no",
+      "student_id_type",
+      "enrollment_date",
+    ];
+    const missing = required.filter((f) => isBlank(req.body[f]));
+
+    if (missing.length) {
+      return res.redirect(
+        "/student?msg=" +
+          encodeURIComponent("Please complete all required RAPIDS fields.")
+      );
+    }
+
+    const enrollmentDate = req.body.enrollment_date ? req.body.enrollment_date : null;
+    const exitDate = req.body.exit_date ? req.body.exit_date : null;
+
+    await pool.query(
+      `UPDATE students
+       SET program_name=$1,
+           provider_program_id=$2,
+           program_system_id=$3,
+           student_id_no=$4,
+           student_id_type=$5,
+           enrollment_date=$6,
+           exit_date=$7,
+           exit_type=$8,
+           credential=$9
+       WHERE user_id=$10`,
+      [
+        cleanText(req.body.program_name),
+        cleanText(req.body.provider_program_id),
+        cleanText(req.body.program_system_id),
+        cleanText(req.body.student_id_no),
+        cleanText(req.body.student_id_type),
+        enrollmentDate,
+        exitDate,
+        cleanText(req.body.exit_type),
+        cleanText(req.body.credential),
+        req.session.user.id,
+      ]
+    );
+
+    return res.redirect("/student?msg=" + encodeURIComponent("RAPIDS fields updated."));
   })
 );
 
@@ -650,6 +746,17 @@ app.post(
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
 
+    const missing = ["first_name", "last_name", "phone", "employer_name"].filter((f) =>
+      isBlank(req.body[f])
+    );
+
+    if (missing.length) {
+      return res.redirect(
+        `/admin/students/${studentId}?msg=` +
+          encodeURIComponent("Please complete all required identity fields.")
+      );
+    }
+
     await pool.query(
       `UPDATE students
        SET first_name=$1, last_name=$2, phone=$3, employer_name=$4, level=$5, status=$6
@@ -677,6 +784,23 @@ app.post(
   requireRole("admin"),
   wrap(async (req, res) => {
     const studentId = Number(req.params.id);
+
+    const required = [
+      "program_name",
+      "provider_program_id",
+      "program_system_id",
+      "student_id_no",
+      "student_id_type",
+      "enrollment_date",
+    ];
+    const missing = required.filter((f) => isBlank(req.body[f]));
+
+    if (missing.length) {
+      return res.redirect(
+        `/admin/students/${studentId}?msg=` +
+          encodeURIComponent("Please complete all required RAPIDS fields.")
+      );
+    }
 
     const enrollmentDate = req.body.enrollment_date ? req.body.enrollment_date : null;
     const exitDate = req.body.exit_date ? req.body.exit_date : null;
@@ -792,6 +916,69 @@ app.post(
     await pool.query(`DELETE FROM users WHERE id=$1`, [userId]);
 
     return res.redirect("/admin?msg=" + encodeURIComponent("Student deleted"));
+  })
+);
+
+/* ===================== ADMIN: EMPLOYER DETAIL ===================== */
+app.get(
+  "/admin/employers/:id",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const employerId = Number(req.params.id);
+
+    const e = await pool.query(
+      `SELECT e.*, u.email
+       FROM employers e
+       JOIN users u ON u.id = e.user_id
+       WHERE e.id = $1`,
+      [employerId]
+    );
+
+    if (!e.rows.length) {
+      return res.redirect("/admin?msg=" + encodeURIComponent("Employer not found"));
+    }
+
+    res.render("admin-employer", {
+      user: req.session.user,
+      employer: e.rows[0],
+      message: req.query.msg || null,
+    });
+  })
+);
+
+app.post(
+  "/admin/employers/:id/update",
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const employerId = Number(req.params.id);
+
+    const missing = ["company_name", "contact_name", "phone"].filter((f) =>
+      isBlank(req.body[f])
+    );
+
+    if (missing.length) {
+      return res.redirect(
+        `/admin/employers/${employerId}?msg=` +
+          encodeURIComponent("Please complete all required employer fields.")
+      );
+    }
+
+    await pool.query(
+      `UPDATE employers
+       SET company_name=$1, contact_name=$2, phone=$3
+       WHERE id=$4`,
+      [
+        cleanText(req.body.company_name),
+        cleanText(req.body.contact_name),
+        cleanText(req.body.phone),
+        employerId,
+      ]
+    );
+
+    return res.redirect(
+      `/admin/employers/${employerId}?msg=` +
+        encodeURIComponent("Employer profile updated.")
+    );
   })
 );
 
