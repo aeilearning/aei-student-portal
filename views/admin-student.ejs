@@ -33,31 +33,117 @@
           • <%= student.status %>
         </div>
       </div>
+      <div class="right">
+        <div class="badge"><%= readiness.label %></div>
+      </div>
     </div>
   </div>
 
   <div class="card">
-    <h2>Identity & Progress</h2>
+    <h2>Apprentice Information (Required)</h2>
 
     <form method="POST" action="/admin/students/<%= student.id %>/update-identity" class="grid2">
       <div class="stack">
-        <label>First Name</label>
-        <input name="first_name" value="<%= student.first_name || '' %>" />
+        <label>First Name *</label>
+        <input name="first_name" value="<%= student.first_name || '' %>" required />
       </div>
 
       <div class="stack">
-        <label>Last Name</label>
-        <input name="last_name" value="<%= student.last_name || '' %>" />
+        <label>Middle Name</label>
+        <input name="middle_name" value="<%= student.middle_name || '' %>" />
       </div>
 
       <div class="stack">
-        <label>Phone</label>
-        <input name="phone" value="<%= student.phone || '' %>" />
+        <label>Last Name *</label>
+        <input name="last_name" value="<%= student.last_name || '' %>" required />
       </div>
 
       <div class="stack">
-        <label>Employer Name</label>
-        <input name="employer_name" value="<%= student.employer_name || '' %>" />
+        <label>Suffix</label>
+        <input name="suffix" value="<%= student.suffix || '' %>" />
+      </div>
+
+      <div class="stack">
+        <label>Address *</label>
+        <input name="address" value="<%= student.address || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>City *</label>
+        <input name="city" value="<%= student.city || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>State *</label>
+        <input name="state" value="<%= student.state || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Zip Code *</label>
+        <input name="zip_code" value="<%= student.zip_code || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Phone *</label>
+        <input name="phone" value="<%= student.phone || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Employer Name *</label>
+        <input name="employer_name" value="<%= student.employer_name || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Email</label>
+        <div class="muted"><%= student.email %></div>
+      </div>
+
+      <div class="stack">
+        <label>Social Security Number *</label>
+        <input name="ssn" value="<%= student.ssn || '' %>" />
+        <label class="small" style="margin-top:6px;">
+          <input type="checkbox" name="ssn_not_provided" <%= student.ssn_not_provided ? 'checked' : '' %> />
+          Social Security Number Not Provided
+        </label>
+      </div>
+
+      <div class="stack">
+        <label>Date of Birth *</label>
+        <input
+          type="date"
+          name="date_of_birth"
+          value="<%= student.date_of_birth ? new Date(student.date_of_birth).toISOString().slice(0,10) : '' %>"
+          required
+        />
+      </div>
+
+      <div class="stack">
+        <label>Sex *</label>
+        <select name="sex" required>
+          <option value="">Select one</option>
+          <option value="Male" <%= student.sex === 'Male' ? 'selected' : '' %>>Male</option>
+          <option value="Female" <%= student.sex === 'Female' ? 'selected' : '' %>>Female</option>
+          <option value="Non-Binary" <%= student.sex === 'Non-Binary' ? 'selected' : '' %>>Non-Binary</option>
+          <option value="Participant Did Not Self-Identify" <%= student.sex === 'Participant Did Not Self-Identify' ? 'selected' : '' %>>Participant Did Not Self-Identify</option>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Employment Status *</label>
+        <select name="employment_status" required>
+          <option value="">Select one</option>
+          <option value="New Employee" <%= student.employment_status === 'New Employee' ? 'selected' : '' %>>New Employee</option>
+          <option value="Current Employee" <%= student.employment_status === 'Current Employee' ? 'selected' : '' %>>Current Employee</option>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Completed Pre-Apprenticeship? *</label>
+        <select name="pre_apprenticeship" required>
+          <option value="">Select one</option>
+          <option value="Yes" <%= student.pre_apprenticeship === 'Yes' ? 'selected' : '' %>>Yes</option>
+          <option value="No" <%= student.pre_apprenticeship === 'No' ? 'selected' : '' %>>No</option>
+        </select>
       </div>
 
       <div class="stack">
@@ -79,42 +165,255 @@
       </div>
 
       <div>
-        <button>Save Identity / Progress</button>
+        <button>Save Apprentice Information</button>
       </div>
     </form>
   </div>
 
   <div class="card">
-    <div class="row-between">
-      <div>
-        <h2>Document Vault</h2>
-        <div class="muted small">
-          Admin upload + download. Files are grouped by required category for fast review.
-        </div>
-      </div>
-      <div class="right">
-        <a class="btn" href="/admin/students/<%= student.id %>/docs/download-all">Download All (ZIP)</a>
-      </div>
-    </div>
-
-    <form method="POST" action="/admin/students/<%= student.id %>/docs/upload" enctype="multipart/form-data" class="grid2">
+    <h2>Demographics (Required)</h2>
+    <form method="POST" action="/admin/students/<%= student.id %>/update-demographics" class="grid2">
       <div class="stack">
-        <label>Category (required)</label>
-        <select name="category" required>
-          <% DOC_CATEGORIES.forEach(c => { %>
-            <option value="<%= c %>"><%= c %></option>
+        <label>Ethnicity *</label>
+        <select name="ethnicity" required>
+          <option value="">Select one</option>
+          <option value="Hispanic or Latino" <%= student.ethnicity === 'Hispanic or Latino' ? 'selected' : '' %>>Hispanic or Latino</option>
+          <option value="Non-Hispanic or Latino" <%= student.ethnicity === 'Non-Hispanic or Latino' ? 'selected' : '' %>>Non-Hispanic or Latino</option>
+          <option value="Participant Did Not Self-Identify" <%= student.ethnicity === 'Participant Did Not Self-Identify' ? 'selected' : '' %>>Participant Did Not Self-Identify</option>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Race *</label>
+        <select name="race" required>
+          <option value="">Select one</option>
+          <option value="American Indian or Alaska Native" <%= student.race === 'American Indian or Alaska Native' ? 'selected' : '' %>>American Indian or Alaska Native</option>
+          <option value="Asian" <%= student.race === 'Asian' ? 'selected' : '' %>>Asian</option>
+          <option value="Black or African American" <%= student.race === 'Black or African American' ? 'selected' : '' %>>Black or African American</option>
+          <option value="Native Hawaiian or Other Pacific Islander" <%= student.race === 'Native Hawaiian or Other Pacific Islander' ? 'selected' : '' %>>Native Hawaiian or Other Pacific Islander</option>
+          <option value="White" <%= student.race === 'White' ? 'selected' : '' %>>White</option>
+          <option value="Do not wish to answer" <%= student.race === 'Do not wish to answer' ? 'selected' : '' %>>Do not wish to answer</option>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Veteran Status *</label>
+        <select name="veteran_status" required>
+          <option value="">Select one</option>
+          <option value="Non Veteran" <%= student.veteran_status === 'Non Veteran' ? 'selected' : '' %>>Non Veteran</option>
+          <option value="Veteran" <%= student.veteran_status === 'Veteran' ? 'selected' : '' %>>Veteran</option>
+          <option value="Non Veteran, Other Eligible Individual" <%= student.veteran_status === 'Non Veteran, Other Eligible Individual' ? 'selected' : '' %>>Non Veteran, Other Eligible Individual</option>
+          <option value="Veteran, Eligible" <%= student.veteran_status === 'Veteran, Eligible' ? 'selected' : '' %>>Veteran, Eligible</option>
+          <option value="Participant Did Not Self-Identify" <%= student.veteran_status === 'Participant Did Not Self-Identify' ? 'selected' : '' %>>Participant Did Not Self-Identify</option>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Education Level *</label>
+        <select name="education_level" required>
+          <option value="">Select one</option>
+          <option value="Not High School Graduate" <%= student.education_level === 'Not High School Graduate' ? 'selected' : '' %>>Not High School Graduate</option>
+          <option value="High School Graduate (including equivalency)" <%= student.education_level === 'High School Graduate (including equivalency)' ? 'selected' : '' %>>High School Graduate (including equivalency)</option>
+          <option value="Some College or Associate's degree" <%= student.education_level === "Some College or Associate's degree" ? 'selected' : '' %>>Some College or Associate's degree</option>
+          <option value="Bachelor's degree" <%= student.education_level === "Bachelor's degree" ? 'selected' : '' %>>Bachelor's degree</option>
+          <option value="Master's degree" <%= student.education_level === "Master's degree" ? 'selected' : '' %>>Master's degree</option>
+          <option value="Doctorate or professional degree" <%= student.education_level === 'Doctorate or professional degree' ? 'selected' : '' %>>Doctorate or professional degree</option>
+          <option value="Participant Did Not Self-Identify" <%= student.education_level === 'Participant Did Not Self-Identify' ? 'selected' : '' %>>Participant Did Not Self-Identify</option>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Disability *</label>
+        <select name="disability" required>
+          <option value="">Select one</option>
+          <option value="Yes" <%= student.disability === 'Yes' ? 'selected' : '' %>>Yes</option>
+          <option value="No" <%= student.disability === 'No' ? 'selected' : '' %>>No</option>
+          <option value="Participant Did Not Self-Identify" <%= student.disability === 'Participant Did Not Self-Identify' ? 'selected' : '' %>>Participant Did Not Self-Identify</option>
+        </select>
+      </div>
+
+      <div>
+        <button>Save Demographics</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>RAPIDS Fields (Required)</h2>
+
+    <form method="POST" action="/admin/students/<%= student.id %>/update-rapids" class="grid2">
+      <div class="stack">
+        <label>Program Name *</label>
+        <input name="program_name" value="<%= student.program_name || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Provider Program ID *</label>
+        <input name="provider_program_id" value="<%= student.provider_program_id || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Program System ID *</label>
+        <input name="program_system_id" value="<%= student.program_system_id || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Student ID Number *</label>
+        <input name="student_id_no" value="<%= student.student_id_no || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Student ID Type *</label>
+        <select name="student_id_type" required>
+          <% STUDENT_ID_TYPES.forEach(t => { %>
+            <option value="<%= t %>" <%= student.student_id_type === t ? 'selected' : '' %>><%= t %></option>
           <% }) %>
         </select>
       </div>
 
       <div class="stack">
-        <label>Title (optional but recommended)</label>
+        <label>Enrollment Date *</label>
+        <input
+          type="date"
+          name="enrollment_date"
+          value="<%= student.enrollment_date ? new Date(student.enrollment_date).toISOString().slice(0,10) : '' %>"
+          required
+        />
+      </div>
+
+      <div class="stack">
+        <label>Exit Date</label>
+        <input
+          type="date"
+          name="exit_date"
+          value="<%= student.exit_date ? new Date(student.exit_date).toISOString().slice(0,10) : '' %>"
+        />
+      </div>
+
+      <div class="stack">
+        <label>Exit Type</label>
+        <input name="exit_type" value="<%= student.exit_type || '' %>" />
+      </div>
+
+      <div class="stack">
+        <label>Credential</label>
+        <input name="credential" value="<%= student.credential || '' %>" />
+      </div>
+
+      <div>
+        <button>Save RAPIDS Fields</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Occupation Information (Required)</h2>
+    <form method="POST" action="/admin/students/<%= student.id %>/update-occupation" class="grid2">
+      <div class="stack">
+        <label>Occupation Name *</label>
+        <input name="occupation_name" value="<%= student.occupation_name || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Occupation Code *</label>
+        <input name="occupation_code" value="<%= student.occupation_code || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Date Apprenticeship Begins *</label>
+        <input
+          type="date"
+          name="enrollment_date"
+          value="<%= student.enrollment_date ? new Date(student.enrollment_date).toISOString().slice(0,10) : '' %>"
+          required
+        />
+      </div>
+
+      <div class="stack">
+        <label>Probationary Period (Hours) *</label>
+        <input type="number" name="probationary_period_hours" value="<%= student.probationary_period_hours ?? '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Term Remaining (Hours) *</label>
+        <input type="number" name="term_remaining_hours" value="<%= student.term_remaining_hours ?? '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Expected Completion Date *</label>
+        <input
+          type="date"
+          name="expected_completion_date"
+          value="<%= student.expected_completion_date ? new Date(student.expected_completion_date).toISOString().slice(0,10) : '' %>"
+          required
+        />
+      </div>
+
+      <div class="stack">
+        <label>Credit for Previous On-the-Job Learning (Hours) *</label>
+        <input type="number" name="otjl_credit_hours" value="<%= student.otjl_credit_hours ?? '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Credit for Previous Related Instruction (Hours) *</label>
+        <input type="number" name="related_instruction_credit_hours" value="<%= student.related_instruction_credit_hours ?? '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Related Instruction Provider *</label>
+        <input name="related_instruction_provider" value="<%= student.related_instruction_provider || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Entry Wage *</label>
+        <input type="number" step="0.01" name="entry_wage" value="<%= student.entry_wage ?? '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Entry Wage Units *</label>
+        <input name="entry_wage_units" value="<%= student.entry_wage_units || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Wage Schedule *</label>
+        <input name="wage_schedule" value="<%= student.wage_schedule || '' %>" required />
+      </div>
+
+      <div class="stack">
+        <label>Journeyworker Wage (Hourly) *</label>
+        <input type="number" step="0.01" name="journeyworker_wage" value="<%= student.journeyworker_wage ?? '' %>" required />
+      </div>
+
+      <div>
+        <button>Save Occupation Information</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Document Vault</h2>
+    <div class="muted small">
+      Admin upload + download. Files are grouped by document type for review.
+    </div>
+
+    <form method="POST" action="/admin/students/<%= student.id %>/docs/upload" enctype="multipart/form-data" class="grid2">
+      <div class="stack">
+        <label>Document Type *</label>
+        <select name="doc_type" required>
+          <% DOC_TYPES.forEach(t => { %>
+            <option value="<%= t %>"><%= t %></option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="stack">
+        <label>Title (optional)</label>
         <input name="title" placeholder="e.g. CO Apprentice Card - 2026" />
       </div>
 
       <div class="stack">
-        <label>File</label>
-        <input type="file" name="file" required />
+        <label>File *</label>
+        <input type="file" name="doc_file" required />
       </div>
 
       <div>
@@ -124,32 +423,30 @@
 
     <hr />
 
-    <% if (!groupedDocs || !groupedDocs.length) { %>
+    <% if (!docs || !docs.length) { %>
       <div class="muted">No documents uploaded yet.</div>
     <% } else { %>
-      <% groupedDocs.forEach(group => { %>
-        <h3><%= group.category %> (<%= group.docs.length %>)</h3>
-        <table>
+      <table>
+        <tr>
+          <th>Type</th>
+          <th>Title</th>
+          <th>Original Filename</th>
+          <th>Uploaded</th>
+          <th>By</th>
+          <th>Download</th>
+        </tr>
+        <% docs.forEach(d => { %>
           <tr>
-            <th>Title</th>
-            <th>Original Filename</th>
-            <th>Uploaded</th>
-            <th>By</th>
-            <th>Download</th>
+            <td><%= d.doc_type %></td>
+            <td><%= d.title || d.original_filename %></td>
+            <td class="small"><%= d.original_filename %></td>
+            <td class="small"><%= new Date(d.created_at).toLocaleString() %></td>
+            <td class="small"><%= d.uploader_email || 'Unknown' %></td>
+            <td><a class="btn" href="/admin/docs/<%= d.id %>/download">Download</a></td>
           </tr>
-          <% group.docs.forEach(d => { %>
-            <tr>
-              <td><%= d.title || d.original_filename %></td>
-              <td class="small"><%= d.original_filename %></td>
-              <td class="small"><%= new Date(d.created_at).toLocaleString() %></td>
-              <td class="small"><%= d.uploader_email || 'Unknown' %></td>
-              <td><a class="btn" href="/documents/<%= d.id %>/download">Download</a></td>
-            </tr>
-          <% }) %>
-        </table>
-      <% }) %>
+        <% }) %>
+      </table>
     <% } %>
-
   </div>
 
 </body>
