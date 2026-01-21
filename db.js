@@ -246,6 +246,21 @@ async function initDb() {
       );
     `);
 
+    /* ================= PORTAL MESSAGES ================= */
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS portal_messages (
+        target_role TEXT PRIMARY KEY CHECK (target_role IN ('student','employer','both')),
+        message TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      INSERT INTO portal_messages (target_role, message)
+      VALUES ('student', ''), ('employer', ''), ('both', '')
+      ON CONFLICT (target_role) DO NOTHING;
+    `);
+
     await client.query("COMMIT");
     console.log("✅ Database schema verified");
   } catch (err) {
