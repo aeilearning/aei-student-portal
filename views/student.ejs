@@ -362,16 +362,51 @@
 
   <div class="card">
     <h2>Documents</h2>
-    <div class="muted">
-      Student document vault isn’t wired yet for student accounts. Admin can upload documents on your behalf.
-    </div>
-
-    <% if (documents && documents.length) { %>
-      <div style="margin-top:10px;" class="muted small">
-        (You have <%= documents.length %> document(s) queued to display, but student download routes aren’t enabled yet.)
+    <form method="POST" action="/student/docs/upload" enctype="multipart/form-data" class="grid2">
+      <div class="stack">
+        <label>Document Type *</label>
+        <select name="doc_type" required>
+          <% DOC_TYPES.forEach(t => { %>
+            <option value="<%= t %>"><%= t %></option>
+          <% }) %>
+        </select>
       </div>
-    <% } else { %>
+      <div class="stack">
+        <label>Title (optional)</label>
+        <input name="title" />
+      </div>
+      <div class="stack">
+        <label>File *</label>
+        <input type="file" name="doc_file" required />
+      </div>
+      <div>
+        <button>Upload Document</button>
+      </div>
+    </form>
+
+    <% if (!documents || !documents.length) { %>
       <div class="muted small" style="margin-top:10px;">No documents available yet.</div>
+    <% } else { %>
+      <table class="table" style="margin-top:10px;">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Title</th>
+            <th>Uploaded</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% documents.forEach(d => { %>
+            <tr>
+              <td><%= d.doc_type %></td>
+              <td><%= d.title %></td>
+              <td class="small"><%= new Date(d.created_at).toLocaleDateString() %></td>
+              <td><a class="btn" href="/student/docs/<%= d.id %>/download">Download</a></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
     <% } %>
   </div>
 
